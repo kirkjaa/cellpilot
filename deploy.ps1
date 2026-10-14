@@ -13,7 +13,8 @@ param(
     [int]$DailyLiveRuns = 10,
     [int]$MinInstances = 0      # 1 on judging days: no cold start
 )
-$ErrorActionPreference = "Stop"
+# Not "Stop": Windows PowerShell 5.1 reports gcloud's progress messages (written to stderr) as errors.
+$ErrorActionPreference = "Continue"
 if (-not $Project) { throw "Pass -Project or set GOOGLE_CLOUD_PROJECT." }
 if ($Bucket -like "<*") { throw "Pass -Bucket with the name of the store bucket (no gs:// prefix)." }
 
