@@ -116,4 +116,4 @@ The page shows the inputs as editable fields and recomputes on change; it labels
 | `GET /api/sessions/{sid}/analyses/{aid}/export` | download result + sign-offs | JSON attachment |
 | `GET /media/{sid}/{file}` | clips, with HTTP range support for seeking | video/mp4 |
 
-The latest analysis for a sample is the newest live run if one finished, otherwise the stored one. Daily live-run cap: `CELLPILOT_DAILY_LIVE_RUNS` (default 10).
+The latest analysis for a sample is its stored one (with any sign-offs); a visitor's live run is shown to that visitor by its id, so a stray live result never replaces the curated sample for later visitors. A session with no stored analysis shows its newest finished live run. Daily live-run cap: `CELLPILOT_DAILY_LIVE_RUNS` (default 10); at most `CELLPILOT_MAX_RUNNING` (default 1) runs at once, and a second click during a run joins it.

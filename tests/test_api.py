@@ -64,13 +64,13 @@ def test_start_poll_done_signoff_export(make_client, stub_argon, store):
 
 def test_429_after_the_daily_cap(make_client, stub_argon):
     c = make_client(cap=2)
-    ids = [c.post(f"/api/sessions/{SID}/analyses") for _ in range(2)]
-    assert [r.status_code for r in ids] == [202, 202]
+    for _ in range(2):  # one at a time: a click during a run joins it
+        r = c.post(f"/api/sessions/{SID}/analyses")
+        assert r.status_code == 202
+        wait_done(c, r.json()["id"])
     r = c.post(f"/api/sessions/{SID}/analyses")
     assert r.status_code == 429 and r.json() == {"detail": "Daily limit reached"}
     assert c.get(f"/api/sessions/{SID}").json()["live_runs_left"] == 0
-    for r in ids:
-        wait_done(c, r.json()["id"])
 
 
 def test_failure_is_reported_readably(make_client, monkeypatch):
@@ -105,8 +105,10 @@ def test_stored_sample_analysis_is_latest_and_signoffs_go_to_the_store(make_clie
     assert c.get(f"/api/sessions/{SID}").json()["latest"]["signoffs"]["s2"]["note"] == "check cam1"
 
     aid = c.post(f"/api/sessions/{SID}/analyses").json()["id"]
-    wait_done(c, aid)
-    assert c.get(f"/api/sessions/{SID}").json()["latest"]["id"] == aid  # a finished live run wins
+    assert wait_done(c, aid)["status"] == "done"
+    # the curated sample stays the default; the live run is shown to its visitor by id
+    assert c.get(f"/api/sessions/{SID}").json()["latest"]["id"] == stored["id"]
+    assert c.get(f"/api/sessions/{SID}/analyses/{aid}").json()["live"] is True
 
 
 def test_run_orphaned_by_a_restart_is_marked_failed(make_client, store):

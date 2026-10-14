@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from . import pipeline
 from .limits import DailyLimit
 from .schemas import SignoffIn
-from .store import ID_RE, ROOT, Samples, Store, analyses_prefix, analysis_key, make_store
+from .store import ID_RE, ROOT, Samples, Store, analysis_key, latest_key, make_store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("cellpilot")
@@ -41,13 +41,15 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
     samples = samples or Samples()
     limit = limit or DailyLimit(store)
     edit_lock = threading.Lock()
+    start_lock = threading.Lock()
+    max_running = int(os.environ.get("CELLPILOT_MAX_RUNNING", "1"))
     log.info("store: %s; samples: %s; daily live runs: %d", store.describe(), samples.root, limit.cap)
 
     app = FastAPI(title="CellPilot", version="0.1.0", docs_url="/api/docs",
                   openapi_url="/api/openapi.json", redoc_url=None)
     app.state.store, app.state.samples, app.state.limit = store, samples, limit
     origins = [o.strip() for o in os.environ.get(
-        "CELLPILOT_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",") if o.strip()]
+        "CELLPILOT_CORS_ORIGINS", "").split(",") if o.strip()]
     if origins:  # only for a page served by a separate dev server; production is same-origin
         app.add_middleware(CORSMiddleware, allow_origins=origins,
                            allow_methods=["GET", "POST", "PUT"], allow_headers=["*"])
@@ -83,20 +85,19 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         return rec
 
     def latest(sid: str) -> Optional[dict]:
-        """The newest finished live run, otherwise the sample's stored analysis."""
-        stored = {a["id"]: a for a in samples.analyses(sid)}
-        live_done = []
-        for key in store.list_keys(analyses_prefix(sid)):
-            a = store.read_json(key)
-            if not a:
-                continue
-            if a.get("live"):
-                if a.get("status") == "done":
-                    live_done.append(a)
-            elif a.get("id") in stored:  # a stored analysis that has been signed off lives in the store
-                stored[a["id"]] = a
-        pick = live_done or [a for a in stored.values() if a.get("status") == "done"]
-        return max(pick, key=lambda a: (a.get("finished_at") or "", a["id"])) if pick else None
+        """The sample's stored analysis (its signed-off copy lives in the store); for a session without
+        one, the newest finished live run. A visitor's live run is shown to that visitor by its id, so a
+        stray live result never replaces the curated sample for everyone who opens it afterwards."""
+        stored = [store.read_json(analysis_key(sid, a["id"])) or a
+                  for a in samples.analyses(sid) if a.get("status") == "done"]
+        if stored:
+            return max(stored, key=lambda a: (a.get("finished_at") or "", a["id"]))
+        ptr = store.read_json(latest_key(sid))
+        if ptr and ID_RE.match(ptr.get("id", "")):
+            rec = store.read_json(analysis_key(sid, ptr["id"]))
+            if rec and rec.get("status") == "done":
+                return rec
+        return None
 
     # --------------------------------------------------------------------- API
 
@@ -124,9 +125,17 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
     @app.post("/api/sessions/{sid}/analyses", status_code=202)
     def start_analysis(sid: str):
         session_or_404(sid)
-        if not limit.take():
-            return JSONResponse({"detail": "Daily limit reached"}, status_code=429)
-        return {"id": pipeline.start(store, samples, sid)}
+        with start_lock:  # check, count and start as one step
+            running = pipeline.active_runs()
+            same = [aid for aid, s in running.items() if s == sid]
+            if same:  # join the run in progress instead of paying for another
+                return {"id": same[0]}
+            if len(running) >= max_running:
+                return JSONResponse({"detail": "Another live run is in progress; try again in a few minutes"},
+                                    status_code=429)
+            if not limit.take():
+                return JSONResponse({"detail": "Daily limit reached"}, status_code=429)
+            return {"id": pipeline.start(store, samples, sid)}
 
     @app.get("/api/sessions/{sid}/analyses/{aid}")
     def get_analysis(sid: str, aid: str) -> dict:

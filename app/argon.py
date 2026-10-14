@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from .catalogue import public_catalogue
@@ -29,6 +29,8 @@ from .store import Store
 log = logging.getLogger("cellpilot.argon")
 
 INLINE_LIMIT_BYTES = 15 * 1024 * 1024
+CALL_TIMEOUT_MS = 20 * 60 * 1000  # Vertex caps a request at 20 minutes
+RETRY_CODES = {429, 503}  # rejected before any generation: not billed
 
 _client: Optional[genai.Client] = None
 _client_lock = threading.Lock()
@@ -55,7 +57,8 @@ def client() -> genai.Client:
             if not project:
                 raise ArgonError("GOOGLE_CLOUD_PROJECT is not set on the server.")
             _client = genai.Client(enterprise=True, project=project,
-                                   location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"))
+                                   location=os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+                                   http_options=types.HttpOptions(timeout=CALL_TIMEOUT_MS))
         return _client
 
 
@@ -71,19 +74,21 @@ class CallResult:
 def video_parts(session: dict, sample_dir: Path, store: Store) -> list[types.Part]:
     """The clips in cam0, cam1, cam2 order: inline under 15 MB, else a gs:// URI when the store is a bucket."""
     fps = video_fps()
+    clips = sorted(session["clips"], key=lambda c: c["view"])
+    total = sum((sample_dir / c["file"]).stat().st_size for c in clips)
+    by_uri = total >= INLINE_LIMIT_BYTES  # the three clips share one request
+    if by_uri and not getattr(store, "is_bucket", False):
+        raise ArgonError(f"The clips total {total / 1e6:.0f} MB, too much to send inline; "
+                         "set CELLPILOT_STORE=gs://<bucket> so they go by gs:// URI.")
     parts = []
-    for clip in sorted(session["clips"], key=lambda c: c["view"]):
+    for clip in clips:
         path = sample_dir / clip["file"]
-        size = path.stat().st_size
         meta = types.VideoMetadata(fps=fps)
-        if size >= INLINE_LIMIT_BYTES and getattr(store, "is_bucket", False):
+        if by_uri:
             uri = store.media_uri(f"media/{session['id']}/{clip['file']}", path)
             parts.append(types.Part(file_data=types.FileData(file_uri=uri, mime_type="video/mp4"),
                                     video_metadata=meta))
         else:
-            if size >= INLINE_LIMIT_BYTES:
-                log.warning("%s is %.1f MB; sending inline because the store is not a bucket",
-                            path.name, size / 1e6)
             parts.append(types.Part(inline_data=types.Blob(data=path.read_bytes(), mime_type="video/mp4"),
                                     video_metadata=meta))
     return parts
@@ -136,9 +141,18 @@ def _generate(contents: list, schema: type[BaseModel], thinking: str) -> CallRes
         response_mime_type="application/json",
         response_schema=schema,
         thinking_config=types.ThinkingConfig(thinking_level=thinking),
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
     t0 = time.perf_counter()
-    resp = client().models.generate_content(model=model_name(), contents=contents, config=config)
+    for attempt in range(3):
+        try:
+            resp = client().models.generate_content(model=model_name(), contents=contents, config=config)
+            break
+        except errors.APIError as e:
+            if e.code not in RETRY_CODES or attempt == 2:
+                raise
+            log.warning("Argon answered %s; retrying in %d s", e.code, 20 * (attempt + 1))
+            time.sleep(20 * (attempt + 1))
     seconds = time.perf_counter() - t0
     u = resp.usage_metadata
     usage = {

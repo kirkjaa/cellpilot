@@ -17,4 +17,6 @@ credentials*.json
 .gcp/
 .env
 .env.*
+web/dev/
+web/*.test.mjs
 #!include:.gitignore

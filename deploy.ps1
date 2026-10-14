@@ -10,7 +10,8 @@ param(
     [string]$Bucket = "<STORE_BUCKET>",
     [string]$ServiceAccount = "",
     [string]$Model = "gemini-4-argon",
-    [int]$DailyLiveRuns = 10
+    [int]$DailyLiveRuns = 10,
+    [int]$MinInstances = 0      # 1 on judging days: no cold start
 )
 $ErrorActionPreference = "Stop"
 if (-not $Project) { throw "Pass -Project or set GOOGLE_CLOUD_PROJECT." }
@@ -32,7 +33,7 @@ $deployArgs = @(
     "--allow-unauthenticated",
     "--no-cpu-throttling",
     "--max-instances", "1",
-    "--min-instances", "0",
+    "--min-instances", "$MinInstances",
     "--cpu", "1",
     "--memory", "1Gi",
     "--timeout", "3600",

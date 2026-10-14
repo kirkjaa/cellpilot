@@ -1,0 +1,87 @@
+"""Concurrency, retry, timeout and error-text behaviour."""
+import json
+import threading
+from types import SimpleNamespace
+
+import pytest
+from google.genai import errors
+
+from app import argon, pipeline
+from app.schemas import Analysis, TaskGraph
+
+from .conftest import SID, make_graph, wait_done
+
+
+def test_second_click_joins_the_running_analysis(make_client, monkeypatch):
+    gate = threading.Event()
+
+    def slow_a(session, media):
+        gate.wait(5)
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(argon, "task_graph", slow_a)
+    c = make_client(cap=5)
+    ids = [c.post(f"/api/sessions/{SID}/analyses").json()["id"] for _ in range(4)]
+    assert len(set(ids)) == 1  # one run, one unit of the cap
+    assert c.get(f"/api/sessions/{SID}").json()["live_runs_left"] == 4
+    gate.set()
+    wait_done(c, ids[0])
+
+
+def test_retry_on_429_then_success(monkeypatch):
+    calls = []
+
+    def generate_content(model, contents, config):
+        calls.append(1)
+        if len(calls) == 1:
+            raise errors.APIError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "quota"}})
+        return SimpleNamespace(text=make_graph().model_dump_json(), parsed=None, usage_metadata=None,
+                               model_version=None, candidates=[])
+
+    monkeypatch.setattr(argon, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
+    monkeypatch.setattr(argon.time, "sleep", lambda s: None)
+    r = argon._generate(["x"], TaskGraph, "HIGH")
+    assert len(calls) == 2 and isinstance(r.parsed, TaskGraph)
+
+
+def test_no_retry_on_400(monkeypatch):
+    def generate_content(model, contents, config):
+        raise errors.APIError(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "bad"}})
+
+    monkeypatch.setattr(argon, "client", lambda: SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
+    with pytest.raises(errors.APIError):
+        argon._generate(["x"], TaskGraph, "HIGH")
+
+
+def test_client_has_a_timeout(monkeypatch):
+    monkeypatch.setattr(argon, "_client", None)
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "p")
+    c = argon.client()
+    assert c._api_client._http_options.timeout == 20 * 60 * 1000
+    monkeypatch.setattr(argon, "_client", None)
+
+
+def test_shipped_sample_analyses_match_the_contract():
+    from app.store import Samples
+    s = Samples()
+    for sid in s.ids():
+        sess = s.session(sid)
+        for clip in sess["clips"]:
+            assert (s.dir(sid) / clip["file"]).is_file()
+        for a in s.analyses(sid):
+            rec = Analysis.model_validate(a)
+            assert rec.session_id == sid and rec.live is False and rec.status == "done"
+
+
+def test_big_clips_need_a_bucket(samples, store, monkeypatch):
+    monkeypatch.setattr(argon, "INLINE_LIMIT_BYTES", 100_000)  # three 50 kB clips = 150 kB total
+    with pytest.raises(argon.ArgonError, match="CELLPILOT_STORE=gs://"):
+        argon.video_parts(samples.session(SID), samples.dir(SID), store)
+
+
+def test_api_error_text_is_short():
+    from app.pipeline import readable_error
+    e = errors.APIError(403, {"error": {"code": 403, "status": "PERMISSION_DENIED",
+                                        "message": "denied on projects/secret-project/locations/global"}})
+    msg = readable_error("steps", e)
+    assert "secret-project" not in msg and msg.endswith("403 PERMISSION_DENIED")

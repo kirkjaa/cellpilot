@@ -10,5 +10,8 @@ COPY app/ app/
 COPY web/ web/
 COPY samples/ samples/
 
+RUN useradd --system --no-create-home app
+USER app
+
 # Cloud Run sets $PORT; the shell form expands it.
 CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}

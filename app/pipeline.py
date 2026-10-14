@@ -22,13 +22,13 @@ from .catalogue import choose_robot
 from .payback import roi_defaults
 from .schemas import (Analysis, Counts, Occurrence, Part, Reason, Result, Step, TaskGraph,
                       VerifierCheck, Verify)
-from .store import Samples, Store, analysis_key, argon_key, make_store
+from .store import Samples, Store, analysis_key, argon_key, latest_key, make_store
 
 log = logging.getLogger("cellpilot.pipeline")
 
 TIMING_TOLERANCE_S = 1.0
 
-_active: set[str] = set()
+_active: dict[str, str] = {}  # aid -> sid
 _active_lock = threading.Lock()
 
 
@@ -43,6 +43,11 @@ def new_id() -> str:
 def is_active(aid: str) -> bool:
     with _active_lock:
         return aid in _active
+
+
+def active_runs() -> dict[str, str]:
+    with _active_lock:
+        return dict(_active)
 
 
 def new_record(sid: str, aid: str, live: bool = True) -> dict:
@@ -153,6 +158,10 @@ STAGE_TEXT = {"queued": "start-up", "steps": "the step analysis (Argon call A)",
 
 
 def readable_error(stage: str, e: BaseException) -> str:
+    from google.genai import errors as genai_errors
+
+    if isinstance(e, genai_errors.APIError):  # the full message, with project paths, stays in the log
+        return f"Failed during {STAGE_TEXT.get(stage, stage)}: Argon answered {e.code} {e.status or ''}".rstrip()
     msg = " ".join((str(e) or "").split()) or "no details"
     creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if creds:
@@ -166,7 +175,7 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
     """Run every stage synchronously, writing the record after each stage. Never raises."""
     key = analysis_key(sid, aid)
     with _active_lock:
-        _active.add(aid)
+        _active[aid] = sid
     rec = store.read_json(key) or new_record(sid, aid)
     raw: dict = {}
     tokens = {"prompt_tokens": 0, "output_tokens": 0}
@@ -205,6 +214,7 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
         result = assemble(a.parsed, steps, parts, robot)
 
         save(status="done", stage="done", result=result.model_dump(), finished_at=now_iso())
+        store.write_json(latest_key(sid), {"id": aid, "finished_at": rec["finished_at"]})
     except Exception as e:  # noqa: BLE001 - every failure must reach the page as text
         log.exception("analysis %s failed at stage %s", aid, rec.get("stage"))
         try:
@@ -218,7 +228,7 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
             except Exception:  # noqa: BLE001
                 log.exception("could not store Argon's raw answers for %s", aid)
         with _active_lock:
-            _active.discard(aid)
+            _active.pop(aid, None)
     return rec
 
 
@@ -226,12 +236,12 @@ def start(store: Store, samples: Samples, sid: str) -> str:
     """Queue a live analysis and run it in a background thread; returns its id at once."""
     aid = new_id()
     with _active_lock:
-        _active.add(aid)
+        _active[aid] = sid
     try:
         store.write_json(analysis_key(sid, aid), new_record(sid, aid, live=True))
     except Exception:
         with _active_lock:
-            _active.discard(aid)
+            _active.pop(aid, None)
         raise
     threading.Thread(target=run, args=(store, samples, sid, aid), name=f"analysis-{aid}", daemon=True).start()
     return aid

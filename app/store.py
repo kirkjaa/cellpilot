@@ -25,6 +25,10 @@ def analyses_prefix(sid: str) -> str:
     return f"sessions/{sid}/analyses/"
 
 
+def latest_key(sid: str) -> str:
+    return f"sessions/{sid}/latest-live.json"
+
+
 def argon_key(sid: str, aid: str) -> str:
     return f"sessions/{sid}/argon/{aid}.json"
 
@@ -114,8 +118,10 @@ class GcsStore:
     def write_json(self, key: str, data: dict) -> None:
         blob = self.bucket.blob(self._name(key))
         blob.cache_control = "no-store"
+        from google.cloud.storage.retry import DEFAULT_RETRY
+
         blob.upload_from_string(json.dumps(data, indent=2, ensure_ascii=False),
-                                content_type="application/json")
+                                content_type="application/json", retry=DEFAULT_RETRY)
 
     def list_keys(self, prefix: str) -> list[str]:
         cut = len(self.prefix) + 1 if self.prefix else 0
