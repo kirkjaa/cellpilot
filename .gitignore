@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Never commit credentials
+*.json.key
+*service-account*.json
+*-sa.json
+gcp*.json
+.env
+.env.*
+
+# Local spike output
+spikes/out/
