@@ -8,9 +8,33 @@
       "recorded": "2026-10-14",
       "synthetic": true,
       "clips": [
-        {"view": "cam0", "file": "cam0.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.0},
-        {"view": "cam1", "file": "cam1.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.2},
-        {"view": "cam2", "file": "cam2.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.45}
+        {
+          "view": "cam0",
+          "file": "cam0.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.0
+        },
+        {
+          "view": "cam1",
+          "file": "cam1.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.2
+        },
+        {
+          "view": "cam2",
+          "file": "cam2.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.45
+        }
       ]
     },
     {
@@ -20,9 +44,33 @@
       "recorded": "2026-10-14",
       "synthetic": true,
       "clips": [
-        {"view": "cam0", "file": "cam0.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.0},
-        {"view": "cam1", "file": "cam1.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.2},
-        {"view": "cam2", "file": "cam2.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.45}
+        {
+          "view": "cam0",
+          "file": "cam0.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.0
+        },
+        {
+          "view": "cam1",
+          "file": "cam1.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.2
+        },
+        {
+          "view": "cam2",
+          "file": "cam2.mp4",
+          "fps": 30,
+          "width": 640,
+          "height": 360,
+          "duration_s": 10.0,
+          "offset_s": 0.45
+        }
       ]
     }
   ],
@@ -37,7 +85,11 @@
       "started_at": "2026-10-14T09:00:00Z",
       "finished_at": "2026-10-14T09:03:30Z",
       "error": null,
-      "usage": {"prompt_tokens": 0, "output_tokens": 0, "seconds": 0.0},
+      "usage": {
+        "prompt_tokens": 0,
+        "output_tokens": 0,
+        "seconds": 0.0
+      },
       "result": {
         "summary": "HAND-WRITTEN DEVELOPMENT FIXTURE, not a model output. The clips show a synthetic moving square; these five steps over two cycles are invented to exercise the page.",
         "cycles": 2,
@@ -48,14 +100,47 @@
             "name": "Pick part from bin A",
             "verdict": "automate",
             "reasons": [
-              {"text": "Fixture text: rigid part with parallel faces, lifted straight up", "view": "cam1", "t_s": 0.6},
-              {"text": "Fixture text: same grip in both cycles", "view": "cam2", "t_s": 5.4}
+              {
+                "text": "Fixture text: rigid part with parallel faces, lifted straight up",
+                "view": "cam1",
+                "t_s": 0.6,
+                "box": [
+                  380,
+                  120,
+                  620,
+                  330
+                ]
+              },
+              {
+                "text": "Fixture text: same grip in both cycles",
+                "view": "cam2",
+                "t_s": 5.4,
+                "box": []
+              }
             ],
-            "occurrences": [{"cycle": 1, "start_s": 0.3, "end_s": 1.1}, {"cycle": 2, "start_s": 5.1, "end_s": 5.9}],
-            "parts": ["part"],
+            "occurrences": [
+              {
+                "cycle": 1,
+                "start_s": 0.3,
+                "end_s": 1.1
+              },
+              {
+                "cycle": 2,
+                "start_s": 5.1,
+                "end_s": 5.9
+              }
+            ],
+            "parts": [
+              "part"
+            ],
             "confidence": 0.82,
             "mean_duration_s": 0.8,
-            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.1, "note": ""},
+            "verifier": {
+              "agree": true,
+              "verdict_agree": true,
+              "timing_delta_s": 0.1,
+              "note": ""
+            },
             "preflagged": false
           },
           {
@@ -63,13 +148,41 @@
             "name": "Turn part to face the jig",
             "verdict": "automate",
             "reasons": [
-              {"text": "Fixture text: a single 90 degree turn about one axis", "view": "cam0", "t_s": 1.5}
+              {
+                "text": "Fixture text: a single 90 degree turn about one axis",
+                "view": "cam0",
+                "t_s": 1.5,
+                "box": [
+                  300,
+                  380,
+                  560,
+                  620
+                ]
+              }
             ],
-            "occurrences": [{"cycle": 1, "start_s": 1.1, "end_s": 1.9}, {"cycle": 2, "start_s": 5.9, "end_s": 6.7}],
-            "parts": ["part"],
+            "occurrences": [
+              {
+                "cycle": 1,
+                "start_s": 1.1,
+                "end_s": 1.9
+              },
+              {
+                "cycle": 2,
+                "start_s": 5.9,
+                "end_s": 6.7
+              }
+            ],
+            "parts": [
+              "part"
+            ],
             "confidence": 0.74,
             "mean_duration_s": 0.8,
-            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.2, "note": ""},
+            "verifier": {
+              "agree": true,
+              "verdict_agree": true,
+              "timing_delta_s": 0.2,
+              "note": ""
+            },
             "preflagged": false
           },
           {
@@ -77,14 +190,53 @@
             "name": "Drive two screws",
             "verdict": "needs_fixture",
             "reasons": [
-              {"text": "Fixture text: the part is held by hand while the screws go in", "view": "cam2", "t_s": 2.4},
-              {"text": "Fixture text: a clamp would free the second hand", "view": "cam0", "t_s": 7.2}
+              {
+                "text": "Fixture text: the part is held by hand while the screws go in",
+                "view": "cam2",
+                "t_s": 2.4,
+                "box": [
+                  260,
+                  330,
+                  620,
+                  700
+                ]
+              },
+              {
+                "text": "Fixture text: a clamp would free the second hand",
+                "view": "cam0",
+                "t_s": 7.2,
+                "box": [
+                  300,
+                  300,
+                  640,
+                  720
+                ]
+              }
             ],
-            "occurrences": [{"cycle": 1, "start_s": 1.9, "end_s": 3.4}, {"cycle": 2, "start_s": 6.7, "end_s": 8.1}],
-            "parts": ["part", "screw"],
+            "occurrences": [
+              {
+                "cycle": 1,
+                "start_s": 1.9,
+                "end_s": 3.4
+              },
+              {
+                "cycle": 2,
+                "start_s": 6.7,
+                "end_s": 8.1
+              }
+            ],
+            "parts": [
+              "part",
+              "screw"
+            ],
             "confidence": 0.61,
             "mean_duration_s": 1.45,
-            "verifier": {"agree": false, "verdict_agree": true, "timing_delta_s": 1.3, "note": "Fixture text: the step starts later in cam2; boundaries corrected."},
+            "verifier": {
+              "agree": false,
+              "verdict_agree": true,
+              "timing_delta_s": 1.3,
+              "note": "Fixture text: the step starts later in cam2; boundaries corrected."
+            },
             "preflagged": true
           },
           {
@@ -92,13 +244,41 @@
             "name": "Visual check for scratches",
             "verdict": "keep_human",
             "reasons": [
-              {"text": "Fixture text: the operator tilts the part under the light and judges by eye", "view": "cam1", "t_s": 3.8}
+              {
+                "text": "Fixture text: the operator tilts the part under the light and judges by eye",
+                "view": "cam1",
+                "t_s": 3.8,
+                "box": [
+                  200,
+                  400,
+                  560,
+                  660
+                ]
+              }
             ],
-            "occurrences": [{"cycle": 1, "start_s": 3.4, "end_s": 4.2}, {"cycle": 2, "start_s": 8.1, "end_s": 8.9}],
-            "parts": ["part"],
+            "occurrences": [
+              {
+                "cycle": 1,
+                "start_s": 3.4,
+                "end_s": 4.2
+              },
+              {
+                "cycle": 2,
+                "start_s": 8.1,
+                "end_s": 8.9
+              }
+            ],
+            "parts": [
+              "part"
+            ],
             "confidence": 0.7,
             "mean_duration_s": 0.8,
-            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.0, "note": ""},
+            "verifier": {
+              "agree": true,
+              "verdict_agree": true,
+              "timing_delta_s": 0.0,
+              "note": ""
+            },
             "preflagged": false
           },
           {
@@ -106,10 +286,33 @@
             "name": "Place in tray",
             "verdict": "automate",
             "reasons": [
-              {"text": "Fixture text: tray slots are fixed and visible from above", "view": "cam0", "t_s": 9.2}
+              {
+                "text": "Fixture text: tray slots are fixed and visible from above",
+                "view": "cam0",
+                "t_s": 9.2,
+                "box": [
+                  340,
+                  640,
+                  600,
+                  900
+                ]
+              }
             ],
-            "occurrences": [{"cycle": 1, "start_s": 4.2, "end_s": 4.9}, {"cycle": 2, "start_s": 8.9, "end_s": 9.6}],
-            "parts": ["part"],
+            "occurrences": [
+              {
+                "cycle": 1,
+                "start_s": 4.2,
+                "end_s": 4.9
+              },
+              {
+                "cycle": 2,
+                "start_s": 8.9,
+                "end_s": 9.6
+              }
+            ],
+            "parts": [
+              "part"
+            ],
             "confidence": 0.79,
             "mean_duration_s": 0.7,
             "verifier": null,
@@ -117,22 +320,308 @@
           }
         ],
         "parts": [
-          {"name": "part", "mass_g": 120, "size_mm": [80, 40, 3], "confidence": 0.6},
-          {"name": "screw", "mass_g": 2, "size_mm": [12, 3, 3], "confidence": 0.5}
+          {
+            "name": "part",
+            "mass_g": 120,
+            "size_mm": [
+              80,
+              40,
+              3
+            ],
+            "confidence": 0.6
+          },
+          {
+            "name": "screw",
+            "mass_g": 2,
+            "size_mm": [
+              12,
+              3,
+              3
+            ],
+            "confidence": 0.5
+          }
         ],
-        "counts": {"automate": 3, "keep_human": 1, "needs_fixture": 1, "total": 5},
+        "counts": {
+          "automate": 3,
+          "keep_human": 1,
+          "needs_fixture": 1,
+          "total": 5
+        },
         "automated_share": 0.479,
         "robot": {
-          "model": "UR5e + Robotiq 2F-85",
+          "model": "xArm 6",
+          "vendor": "UFACTORY",
+          "gripper": "two-finger parallel gripper (Robotiq 2F-85 class), 1 kg allowance",
+          "source": "https://example.invalid/fixture",
           "payload_kg": 5.0,
-          "reach_mm": 850,
-          "needed_payload_kg": 0.12,
+          "reach_mm": 700,
+          "needed_payload_kg": 1.12,
+          "needed_reach_mm": 526,
+          "payload_fits": true,
+          "reach_fits": true,
           "fits": true,
-          "why": "Fixture text: copied from the contract example to fill the robot card."
+          "reach_basis": "layout estimated from video (Argon call C)",
+          "price_band": {
+            "low": 10000,
+            "high": 14000,
+            "currency": "USD",
+            "label": "indicative"
+          },
+          "why": "Fixture text: needed payload 1.12 kg (part 120 g plus the 1 kg gripper allowance); needed reach 526 mm from the estimated layout. xArm 6 is the smallest arm in the catalogue that passes both checks.",
+          "alternatives": [
+            {
+              "model": "UR3e",
+              "vendor": "Universal Robots",
+              "payload_kg": 3.0,
+              "reach_mm": 500,
+              "payload_fits": true,
+              "reach_fits": false,
+              "fits": false,
+              "chosen": false,
+              "price_band": {
+                "low": 23000,
+                "high": 28000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "reach short by 26 mm",
+              "source": "https://example.invalid/fixture"
+            },
+            {
+              "model": "xArm 6",
+              "vendor": "UFACTORY",
+              "payload_kg": 5.0,
+              "reach_mm": 700,
+              "payload_fits": true,
+              "reach_fits": true,
+              "fits": true,
+              "chosen": true,
+              "price_band": {
+                "low": 10000,
+                "high": 14000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "chosen: the smallest arm in the catalogue that passes every check",
+              "source": "https://example.invalid/fixture"
+            },
+            {
+              "model": "UR5e",
+              "vendor": "Universal Robots",
+              "payload_kg": 5.0,
+              "reach_mm": 850,
+              "payload_fits": true,
+              "reach_fits": true,
+              "fits": true,
+              "chosen": false,
+              "price_band": {
+                "low": 35000,
+                "high": 42000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "also adequate; a larger arm than this job needs",
+              "source": "https://example.invalid/fixture"
+            },
+            {
+              "model": "Franka FR3",
+              "vendor": "Franka Robotics",
+              "payload_kg": 3.0,
+              "reach_mm": 855,
+              "payload_fits": true,
+              "reach_fits": true,
+              "fits": true,
+              "chosen": false,
+              "price_band": {
+                "low": 20000,
+                "high": 30000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "also adequate; a larger arm than this job needs",
+              "source": "https://example.invalid/fixture"
+            },
+            {
+              "model": "Doosan M0609",
+              "vendor": "Doosan Robotics",
+              "payload_kg": 6.0,
+              "reach_mm": 900,
+              "payload_fits": true,
+              "reach_fits": true,
+              "fits": true,
+              "chosen": false,
+              "price_band": {
+                "low": 30000,
+                "high": 40000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "also adequate; a larger arm than this job needs",
+              "source": "https://example.invalid/fixture"
+            },
+            {
+              "model": "UR10e",
+              "vendor": "Universal Robots",
+              "payload_kg": 12.5,
+              "reach_mm": 1300,
+              "payload_fits": true,
+              "reach_fits": true,
+              "fits": true,
+              "chosen": false,
+              "price_band": {
+                "low": 50000,
+                "high": 60000,
+                "currency": "USD",
+                "label": "indicative"
+              },
+              "note": "also adequate; a larger arm than this job needs",
+              "source": "https://example.invalid/fixture"
+            }
+          ]
         },
         "roi_defaults": {
-          "currency": "SGD", "wage_per_h": 14.0, "shifts": 2, "hours_per_shift": 8, "days_per_year": 250,
-          "robot_price": 40000, "system_multiple": 3.0, "grant_share": 0.5, "grant_cap": 30000
+          "currency": "SGD",
+          "wage_per_h": 14.0,
+          "shifts": 2,
+          "hours_per_shift": 8,
+          "days_per_year": 250,
+          "robot_price": 40000,
+          "system_multiple": 3.0,
+          "grant_share": 0.5,
+          "grant_cap": 30000
+        },
+        "layout": {
+          "source": "HAND-WRITTEN FIXTURE standing in for an estimate from video by Argon (call C)",
+          "frame": "bench frame: origin at the bench's front-left corner as the operator sees it; x to the operator's right along the front edge; y away from the operator; metres",
+          "bench": {
+            "length_m": 1.2,
+            "width_m": 0.6
+          },
+          "operator": {
+            "x_m": 0.6,
+            "y_m": -0.35
+          },
+          "objects": [
+            {
+              "name": "bin A",
+              "kind": "bin",
+              "x_m": 0.2,
+              "y_m": 0.42,
+              "length_m": 0.22,
+              "width_m": 0.18,
+              "step_ids": [
+                "s1"
+              ],
+              "confidence": 0.7
+            },
+            {
+              "name": "jig",
+              "kind": "fixture",
+              "x_m": 0.6,
+              "y_m": 0.2,
+              "length_m": 0.2,
+              "width_m": 0.16,
+              "step_ids": [
+                "s2",
+                "s3"
+              ],
+              "confidence": 0.6
+            },
+            {
+              "name": "screwdriver",
+              "kind": "tool",
+              "x_m": 0.85,
+              "y_m": 0.12,
+              "length_m": 0.22,
+              "width_m": 0.05,
+              "step_ids": [
+                "s3"
+              ],
+              "confidence": 0.5
+            },
+            {
+              "name": "tray",
+              "kind": "part_destination",
+              "x_m": 1.0,
+              "y_m": 0.42,
+              "length_m": 0.3,
+              "width_m": 0.2,
+              "step_ids": [
+                "s5"
+              ],
+              "confidence": 0.65
+            }
+          ],
+          "anchors": [
+            {
+              "step_id": "s1",
+              "name": "Pick part from bin A",
+              "verdict": "automate",
+              "kind": "pick",
+              "x_m": 0.2,
+              "y_m": 0.42
+            },
+            {
+              "step_id": "s1",
+              "name": "Pick part from bin A",
+              "verdict": "automate",
+              "kind": "place",
+              "x_m": 0.6,
+              "y_m": 0.2
+            },
+            {
+              "step_id": "s3",
+              "name": "Drive two screws",
+              "verdict": "needs_fixture",
+              "kind": "pick",
+              "x_m": 0.85,
+              "y_m": 0.12
+            },
+            {
+              "step_id": "s3",
+              "name": "Drive two screws",
+              "verdict": "needs_fixture",
+              "kind": "place",
+              "x_m": 0.6,
+              "y_m": 0.2
+            },
+            {
+              "step_id": "s5",
+              "name": "Place in tray",
+              "verdict": "automate",
+              "kind": "pick",
+              "x_m": 0.6,
+              "y_m": 0.2
+            },
+            {
+              "step_id": "s5",
+              "name": "Place in tray",
+              "verdict": "automate",
+              "kind": "place",
+              "x_m": 1.0,
+              "y_m": 0.42
+            }
+          ],
+          "robot_base": {
+            "x_m": 0.6,
+            "y_m": 0.6,
+            "rule": "on the bench's back edge (across from the operator) or at either end, at the position that minimises the farthest pick or place of the automate and needs_fixture steps"
+          },
+          "needed_reach_m": 0.526,
+          "reach_rule": "farthest pick or place of the automate and needs_fixture steps from the proposed base, divided by 0.85 so it sits within 85 % of the rated reach",
+          "confidence": 0.55,
+          "notes": "Fixture text: scale taken from the 80 mm part and the operator's hands."
+        },
+        "layout_error": null,
+        "cycle_estimate": {
+          "human_cycle_s": 4.8,
+          "automated_steps_s": 2.3,
+          "robot_cycle_s": 2.99,
+          "operator_cycle_s": 2.25,
+          "unassigned_s": 0.25,
+          "parallel_cycle_s": 2.99,
+          "speed_factor": 1.3,
+          "method": "Robot time = the operator's time on the automate steps x 1.3, a conservative factor for a cobot moving at collaborative speed; no robot motion was planned or simulated. Side by side = the longer of the robot's time and the operator's remaining time, the operator keeping the seconds no step covers."
         }
       },
       "signoffs": {}

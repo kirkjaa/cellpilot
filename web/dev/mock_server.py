@@ -46,7 +46,7 @@ MIME = {
     ".ico": "image/x-icon",
     ".mp4": "video/mp4",
 }
-LIVE_STAGES = ["queued", "steps", "verifier", "robot", "payback"]
+LIVE_STAGES = ["queued", "steps", "verifier", "layout", "robot", "payback"]
 CHUNK = 64 * 1024
 
 

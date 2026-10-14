@@ -1,6 +1,6 @@
 import pytest
 
-from app.pipeline import apply_verifier, build_result, cycle_stats, readable_error
+from app.pipeline import apply_verifier, build_result, clean_box, cycle_stats, readable_error
 from app.schemas import Verify
 
 from .conftest import make_check, make_graph
@@ -78,8 +78,17 @@ def test_result_numbers():
     assert r.counts.model_dump() == {"automate": 1, "keep_human": 1, "needs_fixture": 1, "total": 3}
     assert r.automated_share == 0.4  # s1's 4.0 s of a 10 s cycle
     assert r.steps[1].confidence == 1.0  # clamped from 1.4
-    assert r.robot.model == "UR5e + Robotiq 2F-85"
+    assert r.robot.model == "xArm 6" and len(r.robot.alternatives) == 6
     assert r.roi_defaults.currency == "SGD"
+    assert r.steps[0].reasons[0].box == [100, 200, 300, 400] and r.steps[0].reasons[1].box == []
+    assert r.cycle_estimate.human_cycle_s == 10.0 and r.cycle_estimate.robot_cycle_s == pytest.approx(5.2)
+
+
+def test_boxes_are_ordered_clamped_or_dropped():
+    assert clean_box([300, 400, 100, 200]) == [100, 200, 300, 400]
+    assert clean_box([-5, 0, 1200, 999.6]) == [0, 0, 1000, 1000]
+    assert clean_box([10, 10, 10, 50]) == []  # zero height
+    assert clean_box([1, 2, 3]) == [] and clean_box(None) == [] and clean_box(["a", 1, 2, 3]) == []
 
 
 def test_cycle_time_for_a_single_cycle_is_its_span():

@@ -5,7 +5,7 @@ from app import argon
 from app.main import INTERRUPTED
 from app.store import analysis_key, argon_key
 
-from .conftest import CLIP_BYTES, SID, make_check, make_graph, wait_done
+from .conftest import CLIP_BYTES, SID, make_check, make_graph, make_layout, wait_done
 
 
 def test_health_and_sessions(make_client):
@@ -30,17 +30,20 @@ def test_start_poll_done_signoff_export(make_client, stub_argon, store):
     rec = wait_done(c, aid)
     assert rec["status"] == "done" and rec["stage"] == "done", rec["error"]
     assert rec["live"] is True and rec["model"] == argon.model_name() and rec["finished_at"]
-    assert rec["usage"]["prompt_tokens"] == 2500 and rec["usage"]["output_tokens"] == 650
+    assert rec["usage"]["prompt_tokens"] == 3700 and rec["usage"]["output_tokens"] == 850  # three calls
     res = rec["result"]
     assert res["counts"] == {"automate": 1, "keep_human": 1, "needs_fixture": 1, "total": 3}
     assert res["automated_share"] == 0.4 and res["cycle_time_s"] == 10.0
     assert [s["preflagged"] for s in res["steps"]] == [False, True, True]
-    assert res["robot"]["model"] == "UR5e + Robotiq 2F-85"
-    # both calls got the same clips; Argon's answers are kept word for word
-    assert stub_argon["a"][0] == stub_argon["d"][0]
+    assert res["robot"]["model"] == "xArm 6" and res["robot"]["needed_reach_mm"] == 526
+    assert res["layout"]["bench"] == {"length_m": 1.2, "width_m": 0.6} and len(res["layout"]["anchors"]) == 4
+    assert res["layout_error"] is None and res["cycle_estimate"]["speed_factor"] == 1.3
+    # all three calls got the same clips; Argon's answers are kept word for word
+    assert stub_argon["a"][0] == stub_argon["d"][0] == stub_argon["c"][0]
     raw = store.read_json(argon_key(SID, aid))
     assert json.loads(raw["task_graph"]["text"]) == json.loads(make_graph().model_dump_json())
     assert json.loads(raw["verify"]["text"]) == json.loads(make_check().model_dump_json())
+    assert json.loads(raw["layout"]["text"]) == json.loads(make_layout().model_dump_json())
 
     session = c.get(f"/api/sessions/{SID}").json()
     assert session["latest"]["id"] == aid and session["live_runs_left"] == 9

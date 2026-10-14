@@ -28,6 +28,22 @@ def test_second_click_joins_the_running_analysis(make_client, monkeypatch):
     wait_done(c, ids[0])
 
 
+def test_layout_failure_ships_the_study_without_a_layout(make_client, stub_argon, monkeypatch):
+    def broken_c(session, media, steps, parts):
+        raise argon.ArgonError("Argon's answer did not match the ArgonLayout schema (3 problems).")
+
+    monkeypatch.setattr(argon, "layout", broken_c)
+    c = make_client()
+    rec = wait_done(c, c.post(f"/api/sessions/{SID}/analyses").json()["id"])
+    assert rec["status"] == "done" and rec["error"] is None, rec["error"]
+    res = rec["result"]
+    assert res["layout"] is None
+    assert res["layout_error"].startswith("Failed during the layout estimate (Argon call C): ArgonError:")
+    assert res["robot"]["needed_reach_mm"] is None and res["robot"]["reach_fits"] is None
+    assert res["robot"]["model"] == "xArm 6"  # payload fit over the 700 mm floor
+    assert rec["usage"]["prompt_tokens"] == 2500  # calls A and D only were counted
+
+
 def test_retry_on_429_then_success(monkeypatch):
     calls = []
 

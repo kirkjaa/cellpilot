@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app import argon
 from app.limits import DailyLimit
-from app.schemas import TaskGraph, Verify
+from app.schemas import ArgonLayout, TaskGraph, Verify
 from app.store import LocalStore, Samples
 
 SID = "dev-test"
@@ -23,7 +23,8 @@ def make_graph() -> TaskGraph:
         return [{"cycle": c + 1, "start_s": start + 10 * c, "end_s": start + 10 * c + length} for c in range(3)]
 
     def reasons(t):
-        return [{"text": "seen", "view": "cam0", "t_s": t}, {"text": "also seen", "view": "cam1", "t_s": t + 1}]
+        return [{"text": "seen", "view": "cam0", "t_s": t, "box": [100, 200, 300, 400]},
+                {"text": "also seen", "view": "cam1", "t_s": t + 1, "box": []}]
 
     return TaskGraph.model_validate({
         "cycles": 3,
@@ -56,6 +57,29 @@ def make_check() -> Verify:
     ]})
 
 
+def make_layout() -> ArgonLayout:
+    """A 1.2 x 0.6 m bench: bin A on the left, a tray on the right; s1 picks from the bin and places
+    mid-bench, s3 moves the bracket from there to the tray; s2 picks nothing; s9 does not exist."""
+    return ArgonLayout.model_validate({
+        "bench_length_m": 1.2, "bench_width_m": 0.6, "operator_x_m": 0.6,
+        "objects": [
+            {"name": "bin A", "kind": "bin", "x_m": 0.2, "y_m": 0.4, "length_m": 0.2, "width_m": 0.2,
+             "step_ids": ["s1"], "confidence": 0.7},
+            {"name": "tray", "kind": "part_destination", "x_m": 1.0, "y_m": 0.4, "length_m": 0.3, "width_m": 0.2,
+             "step_ids": ["s3"], "confidence": 0.6},
+            {"name": "screwdriver", "kind": "tool", "x_m": 0.6, "y_m": 0.5, "length_m": 0.2, "width_m": 0.05,
+             "step_ids": ["s2"], "confidence": 0.5},
+        ],
+        "steps": [
+            {"id": "s1", "pick_xy_m": [0.2, 0.4], "place_xy_m": [0.6, 0.2], "confidence": 0.7},
+            {"id": "s2", "pick_xy_m": [], "place_xy_m": [], "confidence": 0.5},
+            {"id": "s3", "pick_xy_m": [0.6, 0.2], "place_xy_m": [1.0, 0.4], "confidence": 0.6},
+            {"id": "s9", "pick_xy_m": [5.0, 5.0], "place_xy_m": [], "confidence": 0.9},
+        ],
+        "confidence": 0.6, "notes": "Scale from the bracket's 80 mm length and the operator's hands.",
+    })
+
+
 @pytest.fixture
 def samples_root(tmp_path: Path) -> Path:
     root = tmp_path / "samples"
@@ -84,8 +108,8 @@ def store(tmp_path: Path) -> LocalStore:
 
 @pytest.fixture
 def stub_argon(monkeypatch):
-    """Replace calls A and D; records what they were given."""
-    calls = {"a": [], "d": []}
+    """Replace calls A, D and C; records what they were given."""
+    calls = {"a": [], "d": [], "c": []}
 
     def fake_a(session, media):
         calls["a"].append(media)
@@ -99,8 +123,15 @@ def stub_argon(monkeypatch):
                                 usage={"prompt_tokens": 1500, "cached_tokens": 900, "thoughts_tokens": 100,
                                        "candidates_tokens": 50, "seconds": 0.01})
 
+    def fake_c(session, media, steps, parts):
+        calls["c"].append(media)
+        return argon.CallResult(parsed=make_layout(), text=make_layout().model_dump_json(),
+                                usage={"prompt_tokens": 1200, "cached_tokens": 900, "thoughts_tokens": 50,
+                                       "candidates_tokens": 150, "seconds": 0.01})
+
     monkeypatch.setattr(argon, "task_graph", fake_a)
     monkeypatch.setattr(argon, "verify", fake_d)
+    monkeypatch.setattr(argon, "layout", fake_c)
     return calls
 
 

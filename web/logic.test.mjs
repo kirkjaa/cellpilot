@@ -5,6 +5,7 @@ import {
   computePayback, automatedShare, driftAction, followerTarget, nextSeekLead,
   layoutTimeline, activeSegmentIndex, cycleAt, totalCycles, adjacentStart,
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
+  cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
 } from './logic.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -176,10 +177,11 @@ test('engineer line counts approvals over the result steps only', () => {
 });
 
 test('stage chips for a live run', () => {
-  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo']);
-  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo']);
-  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done']);
-  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'failed', 'todo']);
+  assert.deepEqual(STAGES, ['steps', 'verifier', 'layout', 'robot', 'payback']);
+  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done', 'done']);
+  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'done', 'failed', 'todo']);
 });
 
 test('formatting', () => {
@@ -190,4 +192,99 @@ test('formatting', () => {
   assert.equal(formatClock(168), '2:48');
   assert.equal(formatMoney(120000, 'SGD'), 'SGD 120,000');
   assert.equal(formatMoney(NaN), '–');
+});
+
+/* ---- additions: cycle, evidence, layout */
+
+const RESULT = {
+  cycle_time_s: 10, cycles: 3,
+  steps: [
+    { id: 's1', name: 'Pick', verdict: 'automate', mean_duration_s: 4,
+      reasons: [{ text: 'seen', view: 'cam0', t_s: 1.0, box: [100, 200, 300, 400] }, { text: 'no box', view: 'cam1', t_s: 1.2, box: [] }] },
+    { id: 's2', name: 'Screw', verdict: 'keep_human', mean_duration_s: 3,
+      reasons: [{ text: 'hands', view: 'cam2', t_s: 6.0, box: [0, 0, 1000, 1000] }] },
+    { id: 's3', name: 'Place', verdict: 'needs_fixture', mean_duration_s: 1, reasons: [] },
+  ],
+};
+
+test('cycle breakdown shares the measured cycle out and keeps the unassigned rest', () => {
+  const b = cycleBreakdown(RESULT);
+  assert.equal(b.cycle_s, 10);
+  assert.deepEqual(b.items.map((i) => [i.step_id, i.seconds, i.pct]), [['s1', 4, 40], ['s2', 3, 30], ['s3', 1, 10]]);
+  assert.equal(b.unassigned_s, 2);
+  near(b.unassigned_pct, 20);
+  const none = cycleBreakdown({ steps: RESULT.steps });
+  assert.equal(none.cycle_s, 0);
+  assert.ok(none.items.every((i) => i.pct === 0));
+});
+
+test('robot cycle matches the server arithmetic and follows the factor', () => {
+  const e = robotCycle(RESULT, 1.3);
+  assert.equal(e.automated_steps_s, 4);
+  near(e.robot_cycle_s, 5.2);
+  assert.equal(e.operator_cycle_s, 4);
+  assert.equal(e.unassigned_s, 2);
+  assert.equal(e.parallel_cycle_s, 6); // max(5.2, 4 + 2)
+  near(robotCycle(RESULT, 2).parallel_cycle_s, 8); // the robot becomes the bottleneck
+  assert.equal(robotCycle(RESULT, 0), null);
+  assert.equal(robotCycle(RESULT, 'x'), null);
+  assert.equal(robotCycle({ steps: [] }, 1.3), null);
+});
+
+test('evidence near the playhead, only reasons with a box', () => {
+  const at1 = evidenceAt(RESULT.steps, 1.1);
+  assert.deepEqual(at1.map((e) => [e.view, e.step_id, e.verdict]), [['cam0', 's1', 'automate']]);
+  assert.deepEqual(at1[0].box, [100, 200, 300, 400]);
+  assert.equal(evidenceAt(RESULT.steps, 2.0).length, 0); // 1.0 is more than 0.75 s away
+  assert.equal(evidenceAt(RESULT.steps, 6.7).length, 1);
+  assert.equal(evidenceAt(RESULT.steps, 6.7, 0.5).length, 0);
+  assert.equal(evidenceAt(null, 1).length, 0);
+});
+
+test('box rectangles account for letterboxing', () => {
+  // a 16:9 video in a 400 x 300 element: 400 x 225 centred vertically
+  const rect = contentRect(400, 300, 1280, 720);
+  assert.deepEqual(rect, { x: 0, y: 37.5, w: 400, h: 225 });
+  const b = boxRect([100, 200, 300, 400], rect);
+  near(b.left, 80); near(b.top, 37.5 + 22.5); near(b.width, 80); near(b.height, 45);
+  assert.deepEqual(contentRect(400, 225, 0, 0), { x: 0, y: 0, w: 400, h: 225 }); // no metadata yet: whole element
+  const clamped = boxRect([-50, 0, 2000, 1000], { x: 0, y: 0, w: 100, h: 100 });
+  assert.deepEqual(clamped, { left: 0, top: 0, width: 100, height: 100 });
+});
+
+const LAYOUT = {
+  bench: { length_m: 1.2, width_m: 0.6 }, operator: { x_m: 0.6, y_m: -0.35 },
+  objects: [{ name: 'bin A', kind: 'bin', x_m: 0.2, y_m: 0.4, length_m: 0.2, width_m: 0.2, step_ids: ['s1'], confidence: 0.7 }],
+  anchors: [
+    { step_id: 's1', name: 'Pick', verdict: 'automate', kind: 'pick', x_m: 0.2, y_m: 0.4 },
+    { step_id: 's1', name: 'Pick', verdict: 'automate', kind: 'place', x_m: 0.6, y_m: 0.2 },
+    { step_id: 's2', name: 'Screw', verdict: 'keep_human', kind: 'pick', x_m: 0.9, y_m: 0.1 },
+  ],
+  robot_base: { x_m: 0.6, y_m: 0.6, rule: 'back edge' }, needed_reach_m: 0.526,
+};
+
+test('layout scene flips y so the bench sits above the operator and pairs pick with place', () => {
+  const sc = layoutScene(LAYOUT, 700);
+  assert.deepEqual(sc.bench, { x: 0, y: -600, w: 1200, h: 600 });
+  assert.deepEqual(sc.operator, { cx: 600, cy: 350, r: 225 });
+  assert.deepEqual(sc.objects[0], { name: 'bin A', kind: 'bin', step_ids: ['s1'], confidence: 0.7, x: 100, y: -500, w: 200, h: 200 });
+  assert.equal(sc.anchors.length, 3);
+  assert.deepEqual(sc.arrows, [{ step_id: 's1', name: 'Pick', verdict: 'automate', x1: 200, y1: -400, x2: 600, y2: -200 }]);
+  assert.deepEqual(sc.base, { cx: 600, cy: -600 });
+  assert.deepEqual(sc.reach, { cx: 600, cy: -600, r: 700 });
+  assert.deepEqual(sc.needed, { cx: 600, cy: -600, r: 526 });
+  // the view box covers the bench, the operator and the reach circle, which is let run at most
+  // 300 mm past the bench: here it spans x -100..1300 and y -1300 (clamped to -900)..100
+  const [x, y, w, h] = sc.viewBox;
+  assert.ok(x <= -100 - 120 && x + w >= 1300 + 120, `x ${x} w ${w}`);
+  assert.ok(y <= -900 - 120 && y + h >= 575 + 120, `y ${y} h ${h}`);
+  assert.ok(y > -1300, 'the circle does not stretch the sketch to its full radius');
+  assert.equal(layoutScene(null, 700), null);
+  assert.equal(layoutScene({ bench: { length_m: 1, width_m: 1 } }, 0).reach, null);
+});
+
+test('metres formatting', () => {
+  assert.equal(formatMetres(1.2, 0.6), '1.2 × 0.6 m');
+  assert.equal(formatMetres(0.526), '0.53 m');
+  assert.equal(formatMetres(undefined, 0.6), '? × 0.6 m');
 });

@@ -1,9 +1,11 @@
-"""Gemini 4 Argon on Vertex AI: one long-lived client and the two calls.
+"""Gemini 4 Argon on Vertex AI: one long-lived client and the three calls.
 
 Call A (steps):    the three clips, then the shared context, then the task -> TaskGraph
 Call D (verifier): the same clips and context, identically, then A's JSON -> Verify
+Call C (layout):   the same clips and context, then the verified steps -> ArgonLayout
+                   (a top-view estimate in metres; optional, the study ships without it)
 
-The clips and the context text come first and identically in both calls, so
+The clips and the context text come first and identically in every call, so
 Vertex's implicit caching can reuse that prefix. Credentials come only from the
 environment (GOOGLE_APPLICATION_CREDENTIALS or the Cloud Run service account).
 """
@@ -23,7 +25,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from .catalogue import public_catalogue
-from .schemas import TaskGraph, Verify
+from .schemas import ArgonLayout, Step, TaskGraph, Verify
 from .store import Store
 
 log = logging.getLogger("cellpilot.argon")
@@ -114,7 +116,7 @@ TASK_A = """You are a manufacturing engineer judging which steps of this manual 
 1. Every timestamp you return is in cam0 seconds: the time in a camera's own clip plus that camera's offset_s.
 2. The operator repeats the task; each repetition is a cycle. List the steps of one cycle in order, with ids s1, s2, s3 and so on. For each step give the start and end of every occurrence you see, with its cycle number counting from 1.
 3. Verdict per step: choose "automate" only if a two-finger parallel gripper on a 6-axis cobot with the listed payload could do it with no tactile judgement. Choose "needs_fixture" if a cobot could do it once a fixture holds or presents the part in a known position. Otherwise choose "keep_human".
-4. Give two reasons per step from what you saw, each citing a camera (cam0, cam1 or cam2) and a timestamp in cam0 seconds.
+4. Give two reasons per step from what you saw, each citing a camera (cam0, cam1 or cam2), a timestamp in cam0 seconds, and a box [ymin, xmin, ymax, xmax] on a 0 to 1000 grid over that camera's frame around what the reason describes (the hand, the part, the tool); an empty list only if nothing can be boxed.
 5. Do not list a step you cannot see in at least two views.
 6. List every part handled, with a short name, estimated mass in grams, size in millimetres as [length, width, height], and your confidence from 0 to 1. In each step, refer to parts by these names.
 7. Give each step a confidence from 0 to 1, the number of cycles you see, and a one-paragraph summary for a production manager.
@@ -131,6 +133,24 @@ Return one entry per step id in the analysis, and only those ids.
 - corrected: for each occurrence whose start or end is off by more than one second, its cycle and the corrected start_s and end_s in cam0 seconds; an empty list otherwise.
 - verdict_agree: true if you agree with the verdict under the same rule: "automate" only if a two-finger parallel gripper on a 6-axis cobot with the listed payload could do it with no tactile judgement.
 - note: one or two sentences; name each camera where what you see differs from the analysis.
+"""
+
+TASK_C = """You are estimating the top-view layout of this workstation so a cobot can be placed. Use a bench frame in metres: the origin is the bench's front-left corner as the operator sees it (the operator stands in front of the bench, at y below 0); x runs to the operator's right along the front edge; y runs away from the operator across the bench.
+
+Fix the scale from things of known size: the parts below with their estimated sizes, a hand (about 0.09 m across the palm), an adult's shoulder width (about 0.45 m), a typical bench (0.6 to 0.8 m deep). Say in notes what fixed the scale and what is uncertain. Use all three cameras; their offsets are as given above.
+
+The steps, with every time in cam0 seconds:
+{steps}
+
+The parts, with estimated sizes in millimetres:
+{parts}
+
+Return:
+- bench_length_m and bench_width_m: the working surface the operator uses.
+- operator_x_m: where along the front edge the operator mostly stands.
+- objects: every bin, fixture, tool, part source or part destination on the bench, each with its centre, size, kind, the ids of the steps that use it, and your confidence.
+- steps: one entry per step id above, and only those ids, with pick_xy_m (where the part is taken from in that step) and place_xy_m (where it is put down); an empty list when the step picks or places nothing.
+- confidence: your overall confidence in the scale, 0 to 1.
 """
 
 
@@ -188,3 +208,13 @@ def verify(session: dict, media: list[types.Part], graph: TaskGraph) -> CallResu
     task = TASK_D.format(analysis=graph.model_dump_json(indent=1))
     contents = [*media, types.Part(text=context_text(session)), types.Part(text=task)]
     return _generate(contents, Verify, "HIGH")
+
+
+def layout(session: dict, media: list[types.Part], steps: list[Step], parts: list) -> CallResult:
+    """Call C: a top-view layout in metres for the verified steps (thinking MEDIUM)."""
+    brief = [{"id": s.id, "name": s.name, "verdict": s.verdict, "parts": s.parts,
+              "occurrences": [o.model_dump() for o in s.occurrences[:2]]} for s in steps]
+    part_list = [{"name": p.name, "size_mm": p.size_mm} for p in parts]
+    task = TASK_C.format(steps=json.dumps(brief, indent=1), parts=json.dumps(part_list))
+    contents = [*media, types.Part(text=context_text(session)), types.Part(text=task)]
+    return _generate(contents, ArgonLayout, "MEDIUM")

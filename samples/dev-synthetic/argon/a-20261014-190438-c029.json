@@ -1,0 +1,37 @@
+{
+  "analysis_id": "a-20261014-190438-c029",
+  "model": "gemini-4-argon",
+  "task_graph": {
+    "text": "{\"cycles\": 2, \"summary\": \"Across two observed 5-second cycles, the workstation task consists of a linear transfer of a single red block across two sequential zones separated by a center boundary line. Because the motion follows a fixed, repeatable linear path with a simple geometric part well within the payload and reach limits of standard 6-axis cobots like the UR5e or Franka FR3, both steps are strong candidates for full automation using a standard two-finger parallel gripper.\", \"steps\": [{\"id\": \"s1\", \"name\": \"Transfer red block across left zone\", \"verdict\": \"automate\", \"reasons\": [{\"text\": \"The red block moves along a straight, unobstructed horizontal trajectory toward the center boundary line, which a 6-axis cobot with a parallel gripper can easily execute.\", \"view\": \"cam0\", \"t_s\": 1.2, \"box\": [444, 239, 556, 302]}, {\"text\": \"The block maintains a consistent orientation and linear path across the left workspace with no tactile judgement required.\", \"view\": \"cam1\", \"t_s\": 1.2, \"box\": [305, 239, 417, 302]}], \"occurrences\": [{\"cycle\": 1, \"start_s\": 0.0, \"end_s\": 2.4}, {\"cycle\": 2, \"start_s\": 5.0, \"end_s\": 7.4}], \"parts\": [\"red block\"], \"confidence\": 0.95}, {\"id\": \"s2\", \"name\": \"Transfer red block across right zone\", \"verdict\": \"automate\", \"reasons\": [{\"text\": \"After crossing the center boundary, the red block continues along the same predictable linear path through the right zone.\", \"view\": \"cam0\", \"t_s\": 3.6, \"box\": [444, 696, 556, 759]}, {\"text\": \"Multi-view confirmation shows the part remains rigid and follows a repeatable trajectory to the end of the stroke without complex manipulation.\", \"view\": \"cam2\", \"t_s\": 3.65, \"box\": [514, 706, 625, 769]}], \"occurrences\": [{\"cycle\": 1, \"start_s\": 2.4, \"end_s\": 4.8}, {\"cycle\": 2, \"start_s\": 7.4, \"end_s\": 9.8}], \"parts\": [\"red block\"], \"confidence\": 0.95}], \"parts\": [{\"name\": \"red block\", \"mass_g\": 150.0, \"size_mm\": [50.0, 50.0, 50.0], \"confidence\": 0.85}]}",
+    "usage": {
+      "prompt_tokens": 13610,
+      "cached_tokens": 0,
+      "thoughts_tokens": 2391,
+      "candidates_tokens": 650,
+      "seconds": 46.21,
+      "model_version": "gemini-4-argon"
+    }
+  },
+  "verify": {
+    "text": "{\"steps\": [{\"id\": \"s1\", \"agree\": true, \"timing_delta_s\": 0.0, \"corrected\": [], \"verdict_agree\": true, \"note\": \"The step boundaries and automate verdict match what is observed across cam0, cam1, and cam2 once camera offsets are applied.\"}, {\"id\": \"s2\", \"agree\": true, \"timing_delta_s\": 0.0, \"corrected\": [], \"verdict_agree\": true, \"note\": \"The step boundaries and automate verdict match what is observed across cam0, cam1, and cam2 once camera offsets are applied.\"}]}",
+    "usage": {
+      "prompt_tokens": 13714,
+      "cached_tokens": 0,
+      "thoughts_tokens": 1047,
+      "candidates_tokens": 152,
+      "seconds": 17.84,
+      "model_version": "gemini-4-argon"
+    }
+  },
+  "layout": {
+    "text": "{\"bench_length_m\": 0.8, \"bench_width_m\": 0.45, \"operator_x_m\": 0.4, \"objects\": [{\"name\": \"left pick zone\", \"kind\": \"part_source\", \"x_m\": 0.035, \"y_m\": 0.225, \"length_m\": 0.05, \"width_m\": 0.05, \"step_ids\": [\"s1\"], \"confidence\": 0.5}, {\"name\": \"center boundary line\", \"kind\": \"fixture\", \"x_m\": 0.4, \"y_m\": 0.225, \"length_m\": 0.01, \"width_m\": 0.45, \"step_ids\": [\"s1\", \"s2\"], \"confidence\": 0.5}, {\"name\": \"right place zone\", \"kind\": \"part_destination\", \"x_m\": 0.765, \"y_m\": 0.225, \"length_m\": 0.05, \"width_m\": 0.05, \"step_ids\": [\"s2\"], \"confidence\": 0.5}], \"steps\": [{\"id\": \"s1\", \"pick_xy_m\": [0.035, 0.225], \"place_xy_m\": [0.4, 0.225], \"confidence\": 0.5}, {\"id\": \"s2\", \"pick_xy_m\": [0.4, 0.225], \"place_xy_m\": [0.765, 0.225], \"confidence\": 0.5}], \"confidence\": 0.5, \"notes\": \"Scale is anchored strictly by the 50 mm red block width, which spans roughly 1/16th of the frame width, giving a 0.80 m wide by 0.45 m deep workspace. The video is a synthetic 2D animation with no operator or physical fixtures visible, so y-depth and operator stance are estimated at the center.\"}",
+    "usage": {
+      "prompt_tokens": 13755,
+      "cached_tokens": 0,
+      "thoughts_tokens": 0,
+      "candidates_tokens": 495,
+      "seconds": 10.29,
+      "model_version": "gemini-4-argon"
+    }
+  }
+}

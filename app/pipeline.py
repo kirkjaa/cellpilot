@@ -1,9 +1,11 @@
-"""Run one analysis: queued -> steps (Argon A) -> verifier (Argon D) -> robot -> payback -> done.
+"""Run one analysis: queued -> steps (Argon A) -> verifier (Argon D) -> layout (Argon C)
+-> robot -> payback -> done. The layout stage is optional: if it fails, the study ships
+without a layout and says why.
 
 The API starts each run in a background thread (`start`). The same code runs
 synchronously from the command line to make a sample's stored analysis:
 
-    python -m app.pipeline <session-id> --save-sample     # two paid Argon calls
+    python -m app.pipeline <session-id> --save-sample     # three paid Argon calls
 """
 from __future__ import annotations
 
@@ -18,9 +20,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from . import argon
-from .catalogue import choose_robot
+from .catalogue import choose_robot, cycle_estimate
+from .layout import build_layout
 from .payback import roi_defaults
-from .schemas import (Analysis, Counts, Occurrence, Part, Reason, Result, Step, TaskGraph,
+from .schemas import (Analysis, ArgonLayout, Counts, Layout, Occurrence, Part, Reason, Result, Step, TaskGraph,
                       VerifierCheck, Verify)
 from .store import Samples, Store, analysis_key, argon_key, latest_key, make_store
 
@@ -91,12 +94,26 @@ def apply_verifier(graph: TaskGraph, check: Optional[Verify]) -> list[Step]:
         durations = [max(0.0, o.end_s - o.start_s) for o in occ]
         steps.append(Step(
             id=s.id, name=s.name.strip(), verdict=s.verdict,
-            reasons=[Reason(text=r.text.strip(), view=r.view, t_s=round(r.t_s, 2)) for r in s.reasons],
+            reasons=[Reason(text=r.text.strip(), view=r.view, t_s=round(r.t_s, 2), box=clean_box(r.box))
+                     for r in s.reasons],
             occurrences=occ, parts=[p.strip() for p in s.parts], confidence=round(_clamp01(s.confidence), 2),
             mean_duration_s=round(sum(durations) / len(durations), 2) if durations else 0.0,
             verifier=verifier, preflagged=preflagged,
         ))
     return steps
+
+
+def clean_box(box) -> list[int]:
+    """[ymin, xmin, ymax, xmax] on the 0-1000 grid, ordered and clamped; [] for anything degenerate."""
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return []
+    try:
+        y0, x0, y1, x1 = (int(min(1000, max(0, round(float(v))))) for v in box)
+    except (TypeError, ValueError):
+        return []
+    y0, y1 = sorted((y0, y1))
+    x0, x1 = sorted((x0, x1))
+    return [y0, x0, y1, x1] if y1 > y0 and x1 > x0 else []
 
 
 def clean_parts(parts: list[Part]) -> list[Part]:
@@ -137,24 +154,29 @@ def automated_share(steps: list[Step], cycle_time_s: float) -> float:
     return round(_clamp01(auto / cycle_time_s), 3)
 
 
-def assemble(graph: TaskGraph, steps: list[Step], parts: list[Part], robot: dict) -> Result:
+def assemble(graph: TaskGraph, steps: list[Step], parts: list[Part], robot: dict,
+             layout: Optional[Layout] = None, layout_error: Optional[str] = None) -> Result:
     cycles, cycle_time = cycle_stats(steps, graph.cycles)
     return Result(summary=graph.summary.strip(), cycles=cycles, cycle_time_s=cycle_time, steps=steps,
                   parts=parts, counts=count_verdicts(steps),
-                  automated_share=automated_share(steps, cycle_time), robot=robot, roi_defaults=roi_defaults())
+                  automated_share=automated_share(steps, cycle_time), robot=robot, roi_defaults=roi_defaults(),
+                  layout=layout, layout_error=layout_error, cycle_estimate=cycle_estimate(steps, cycle_time))
 
 
-def build_result(graph: TaskGraph, check: Optional[Verify]) -> Result:
+def build_result(graph: TaskGraph, check: Optional[Verify], estimate: Optional[ArgonLayout] = None) -> Result:
     steps = apply_verifier(graph, check)
     parts = clean_parts(graph.parts)
-    return assemble(graph, steps, parts, choose_robot(parts, steps))
+    layout = build_layout(estimate, steps) if estimate is not None else None
+    robot = choose_robot(parts, steps, needed_reach_m=layout.needed_reach_m if layout else None)
+    return assemble(graph, steps, parts, robot, layout,
+                    None if layout else "No layout pass was run for this result.")
 
 
 # ------------------------------------------------------------------- running
 
 STAGE_TEXT = {"queued": "start-up", "steps": "the step analysis (Argon call A)",
-              "verifier": "the verifier (Argon call D)", "robot": "the robot choice",
-              "payback": "the payback figures", "done": "saving"}
+              "verifier": "the verifier (Argon call D)", "layout": "the layout estimate (Argon call C)",
+              "robot": "the robot choice", "payback": "the payback figures", "done": "saving"}
 
 
 def readable_error(stage: str, e: BaseException) -> str:
@@ -205,13 +227,24 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
         raw["verify"] = {"text": d.text, "usage": d.usage}
         count(d)
 
-        save(stage="robot")
+        save(stage="layout")
         steps = apply_verifier(a.parsed, d.parsed)
         parts = clean_parts(a.parsed.parts)
-        robot = choose_robot(parts, steps)
+        layout, layout_error = None, None
+        try:  # optional: the study ships without a layout rather than losing calls A and D
+            c = argon.layout(session, media, steps, parts)
+            raw["layout"] = {"text": c.text, "usage": c.usage}
+            count(c)
+            layout = build_layout(c.parsed, steps)
+        except Exception as e:  # noqa: BLE001
+            log.exception("analysis %s: the layout pass failed; continuing without a layout", aid)
+            layout_error = readable_error("layout", e)
+
+        save(stage="robot")
+        robot = choose_robot(parts, steps, needed_reach_m=layout.needed_reach_m if layout else None)
 
         save(stage="payback")
-        result = assemble(a.parsed, steps, parts, robot)
+        result = assemble(a.parsed, steps, parts, robot, layout, layout_error)
 
         save(status="done", stage="done", result=result.model_dump(), finished_at=now_iso())
         store.write_json(latest_key(sid), {"id": aid, "finished_at": rec["finished_at"]})
@@ -250,7 +283,7 @@ def start(store: Store, samples: Samples, sid: str) -> str:
 # ----------------------------------------------------------------------- CLI
 
 def main(argv: Optional[list[str]] = None) -> int:
-    p = argparse.ArgumentParser(description="Run one analysis now (two paid Argon calls).")
+    p = argparse.ArgumentParser(description="Run one analysis now (three paid Argon calls).")
     p.add_argument("session", help="sample session id, e.g. dev-synthetic")
     p.add_argument("--save-sample", action="store_true",
                    help="also write the result to samples/<sid>/analyses/<aid>.json with live=false")
@@ -281,7 +314,23 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"      verifier: agree {s['verifier']['agree']} verdict_agree {s['verifier']['verdict_agree']}"
                   f" delta {s['verifier']['timing_delta_s']} s - {s['verifier']['note']}")
     print("parts:", json.dumps(r["parts"]))
+    lay = r.get("layout")
+    if lay:
+        print(f"layout: bench {lay['bench']['length_m']} x {lay['bench']['width_m']} m, {len(lay['objects'])} objects, "
+              f"{len(lay['anchors'])} anchors, base ({lay['robot_base']['x_m']}, {lay['robot_base']['y_m']}), "
+              f"needed reach {lay['needed_reach_m']} m, confidence {lay['confidence']} - {lay['notes']}")
+        for o in lay["objects"]:
+            print(f"  {o['kind']:16} {o['name']!r} at ({o['x_m']}, {o['y_m']}) {o['length_m']}x{o['width_m']} m")
+    else:
+        print("layout: none -", r.get("layout_error"))
     print("robot:", r["robot"]["model"], "-", r["robot"]["why"])
+    for o in r["robot"].get("alternatives", []):
+        print(f"  {'*' if o['chosen'] else ' '} {o['model']:14} {o['payload_kg']} kg {o['reach_mm']} mm "
+              f"payload {o['payload_fits']} reach {o['reach_fits']} - {o['note']}")
+    if r.get("cycle_estimate"):
+        ce = r["cycle_estimate"]
+        print(f"cycle estimate: human {ce['human_cycle_s']} s, robot {ce['robot_cycle_s']} s "
+              f"(x{ce['speed_factor']}), operator {ce['operator_cycle_s']} s, side by side {ce['parallel_cycle_s']} s")
 
     if args.save_sample:
         out = samples.dir(sid)

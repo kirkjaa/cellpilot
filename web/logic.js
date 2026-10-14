@@ -1,7 +1,7 @@
 // CellPilot page logic: pure functions, no DOM.
 // Imported by app.js in the browser and by logic.test.mjs under `node --test`.
 
-export const STAGES = ['steps', 'verifier', 'robot', 'payback'];
+export const STAGES = ['steps', 'verifier', 'layout', 'robot', 'payback'];
 
 export const VERDICT_LABEL = {
   automate: 'Automate',
@@ -241,4 +241,155 @@ export function formatClock(s) {
 export function formatMoney(n, currency = 'SGD') {
   if (!Number.isFinite(n)) return '–';
   return `${currency} ${Math.round(n).toLocaleString('en-US')}`;
+}
+
+/* ------------------------------------------------------------------ cycle */
+
+/** Where the measured cycle goes: one item per step (mean duration, share) plus the unassigned rest. */
+export function cycleBreakdown(result) {
+  const cycle = Number(result?.cycle_time_s);
+  const ok = cycle > 0;
+  let used = 0;
+  const items = (result?.steps || []).map((s, i) => {
+    const seconds = Math.max(0, Number(s.mean_duration_s) || 0);
+    used += seconds;
+    return { step_id: s.id, index: i, name: s.name, verdict: s.verdict, seconds, pct: ok ? (seconds / cycle) * 100 : 0 };
+  });
+  const unassigned_s = ok ? Math.max(0, cycle - used) : 0;
+  return { cycle_s: ok ? cycle : 0, items, unassigned_s, unassigned_pct: ok ? (unassigned_s / cycle) * 100 : 0 };
+}
+
+/**
+ * The robot cycle estimate, the same arithmetic as app/catalogue.py so the page can
+ * recompute it when the engineer changes the speed factor:
+ *   robot    = (sum of automate step means) * factor
+ *   operator = sum of the other step means
+ *   parallel = max(robot, operator + unassigned)
+ * Returns null without a measured cycle or a usable factor.
+ */
+export function robotCycle(result, factor) {
+  const f = Number(factor);
+  const cycle = Number(result?.cycle_time_s);
+  if (!(cycle > 0) || !Number.isFinite(f) || f <= 0) return null;
+  let auto = 0;
+  let other = 0;
+  for (const s of result.steps || []) {
+    const d = Math.max(0, Number(s.mean_duration_s) || 0);
+    if (s.verdict === 'automate') auto += d; else other += d;
+  }
+  const unassigned_s = Math.max(0, cycle - auto - other);
+  const robot_cycle_s = auto * f;
+  return {
+    human_cycle_s: cycle, automated_steps_s: auto, robot_cycle_s, operator_cycle_s: other, unassigned_s,
+    parallel_cycle_s: Math.max(robot_cycle_s, other + unassigned_s), speed_factor: f,
+  };
+}
+
+/* --------------------------------------------------------------- evidence */
+
+export const EVIDENCE_WINDOW_S = 0.75;
+
+/** Reasons with a box whose time is within `win` seconds of t: what to draw over the videos now. */
+export function evidenceAt(steps, t, win = EVIDENCE_WINDOW_S) {
+  const out = [];
+  (steps || []).forEach((s, index) => {
+    for (const r of s.reasons || []) {
+      const box = Array.isArray(r.box) && r.box.length === 4 ? r.box.map(Number) : null;
+      if (!box || box.some((v) => !Number.isFinite(v))) continue;
+      const ts = Number(r.t_s);
+      if (!Number.isFinite(ts) || Math.abs(ts - t) > win) continue;
+      out.push({ view: r.view, box, step_id: s.id, index, name: s.name, verdict: s.verdict, text: r.text, t_s: ts });
+    }
+  });
+  return out;
+}
+
+/** The rectangle the video frame occupies inside a `contain`-fitted element (letterboxing). */
+export function contentRect(elW, elH, vidW, vidH) {
+  if (!(vidW > 0) || !(vidH > 0) || !(elW > 0) || !(elH > 0)) return { x: 0, y: 0, w: elW || 0, h: elH || 0 };
+  const scale = Math.min(elW / vidW, elH / vidH);
+  const w = vidW * scale;
+  const h = vidH * scale;
+  return { x: (elW - w) / 2, y: (elH - h) / 2, w, h };
+}
+
+/** A [ymin, xmin, ymax, xmax] box on the 0-1000 grid -> pixel rectangle inside `rect`. */
+export function boxRect(box, rect) {
+  const [y0, x0, y1, x1] = box.map((v) => clamp(Number(v) / 1000, 0, 1));
+  return {
+    left: rect.x + x0 * rect.w, top: rect.y + y0 * rect.h,
+    width: Math.max(0, x1 - x0) * rect.w, height: Math.max(0, y1 - y0) * rect.h,
+  };
+}
+
+/* ----------------------------------------------------------------- layout */
+
+export const OPERATOR_RADIUS_MM = 225; // an adult's shoulder width is about 0.45 m
+export const SCENE_PAD_MM = 120;
+export const REACH_OVERHANG_MM = 300;  // how far past the bench the reach circle may widen the sketch
+
+/**
+ * Top-view scene in millimetres for the SVG, from the result's layout (bench frame: x to the
+ * operator's right, y away from the operator) and the chosen robot's reach. SVG y points down,
+ * so scene y = -bench y: the bench sits above the operator on screen.
+ * Returns null without a layout.
+ */
+export function layoutScene(layout, reach_mm) {
+  if (!layout?.bench) return null;
+  const mm = (m) => Math.round((Number(m) || 0) * 1000);
+  const L = Math.max(1, mm(layout.bench.length_m));
+  const W = Math.max(1, mm(layout.bench.width_m));
+  const bench = { x: 0, y: -W, w: L, h: W };
+  const op = layout.operator || {};
+  const operator = { cx: mm(op.x_m ?? layout.bench.length_m / 2), cy: -mm(op.y_m ?? -0.35), r: OPERATOR_RADIUS_MM };
+  const objects = (layout.objects || []).map((o) => ({
+    name: o.name, kind: o.kind, step_ids: o.step_ids || [], confidence: Number(o.confidence) || 0,
+    x: mm(o.x_m) - mm(o.length_m) / 2, y: -mm(o.y_m) - mm(o.width_m) / 2,
+    w: Math.max(10, mm(o.length_m)), h: Math.max(10, mm(o.width_m)),
+  }));
+  const anchors = (layout.anchors || []).map((a) => ({
+    cx: mm(a.x_m), cy: -mm(a.y_m), kind: a.kind, verdict: a.verdict, step_id: a.step_id, name: a.name,
+  }));
+  const arrows = [];
+  const byStep = new Map();
+  for (const a of anchors) {
+    const e = byStep.get(a.step_id) || {};
+    e[a.kind] = a;
+    e.verdict = a.verdict;
+    e.name = a.name;
+    byStep.set(a.step_id, e);
+  }
+  for (const [step_id, e] of byStep) {
+    if (e.pick && e.place) {
+      arrows.push({ step_id, name: e.name, verdict: e.verdict, x1: e.pick.cx, y1: e.pick.cy, x2: e.place.cx, y2: e.place.cy });
+    }
+  }
+  let base = null;
+  let reach = null;
+  let needed = null;
+  if (layout.robot_base) {
+    base = { cx: mm(layout.robot_base.x_m), cy: -mm(layout.robot_base.y_m) };
+    if (Number(reach_mm) > 0) reach = { ...base, r: Math.round(Number(reach_mm)) };
+    if (Number(layout.needed_reach_m) > 0) needed = { ...base, r: mm(layout.needed_reach_m) };
+  }
+  // Bounds over everything drawn, plus padding. The reach circles may run off the sketch
+  // (they are clipped by the viewBox) so a long arm does not shrink the bench to a stamp.
+  let minX = bench.x; let minY = bench.y; let maxX = bench.x + bench.w; let maxY = bench.y + bench.h;
+  const grow = (x0, y0, x1, y1) => { minX = Math.min(minX, x0); minY = Math.min(minY, y0); maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1); };
+  grow(operator.cx - operator.r, operator.cy - operator.r, operator.cx + operator.r, operator.cy + operator.r);
+  for (const o of objects) grow(o.x, o.y, o.x + o.w, o.y + o.h);
+  for (const a of anchors) grow(a.cx - 40, a.cy - 40, a.cx + 40, a.cy + 40);
+  for (const c of [reach, needed]) {
+    if (!c) continue;
+    grow(Math.max(c.cx - c.r, bench.x - REACH_OVERHANG_MM), Math.max(c.cy - c.r, bench.y - REACH_OVERHANG_MM),
+      Math.min(c.cx + c.r, bench.x + bench.w + REACH_OVERHANG_MM), Math.min(c.cy + c.r, bench.y + bench.h + REACH_OVERHANG_MM));
+  }
+  const viewBox = [minX - SCENE_PAD_MM, minY - SCENE_PAD_MM, maxX - minX + 2 * SCENE_PAD_MM, maxY - minY + 2 * SCENE_PAD_MM];
+  return { bench, operator, objects, anchors, arrows, base, reach, needed, viewBox };
+}
+
+/** "1.2 × 0.6 m" */
+export function formatMetres(a, b) {
+  const f = (x) => (Number.isFinite(x) ? (Math.round(x * 100) / 100).toString() : '?');
+  return b == null ? `${f(a)} m` : `${f(a)} × ${f(b)} m`;
 }

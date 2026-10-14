@@ -4,9 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from app import argon
-from app.schemas import TaskGraph
+from app.pipeline import apply_verifier, clean_parts
+from app.schemas import ArgonLayout, TaskGraph
 
-from .conftest import SID, make_check, make_graph
+from .conftest import SID, make_check, make_graph, make_layout
 
 
 def test_clips_inline_in_camera_order(samples, store, monkeypatch):
@@ -57,13 +58,21 @@ def test_calls_share_the_same_prefix_and_think_high(samples, store, monkeypatch)
     monkeypatch.setattr(argon, "client", lambda: fake_client(make_check(), sent))
     d = argon.verify(session, media, a.parsed)
 
-    assert isinstance(a.parsed, TaskGraph) and len(d.parsed.steps) == 4
-    a_parts, d_parts = sent[0]["contents"], sent[1]["contents"]
-    assert a_parts[:4] == d_parts[:4]  # three clips + shared context, identical for implicit caching
+    steps = apply_verifier(a.parsed, d.parsed)
+    monkeypatch.setattr(argon, "client", lambda: fake_client(make_layout(), sent))
+    c = argon.layout(session, media, steps, clean_parts(a.parsed.parts))
+
+    assert isinstance(a.parsed, TaskGraph) and len(d.parsed.steps) == 4 and isinstance(c.parsed, ArgonLayout)
+    a_parts, d_parts, c_parts = sent[0]["contents"], sent[1]["contents"], sent[2]["contents"]
+    assert a_parts[:4] == d_parts[:4] == c_parts[:4]  # three clips + shared context, identical for implicit caching
     assert "two-finger parallel gripper" in a_parts[4].text and "at least two views" in a_parts[4].text
+    assert "[ymin, xmin, ymax, xmax]" in a_parts[4].text and "0 to 1000" in a_parts[4].text
     assert "You are checking another engineer's analysis" in d_parts[4].text and '"s1"' in d_parts[4].text
+    assert "top-view layout" in c_parts[4].text and '"Pick bracket"' in c_parts[4].text
+    assert '"bracket"' in c_parts[4].text and "pick_xy_m" in c_parts[4].text
     assert "offset_s" in a_parts[3].text and '"cam2"' in a_parts[3].text and "Franka FR3" in a_parts[3].text
-    assert all(s["config"].thinking_config.thinking_level.value == "HIGH" for s in sent)
+    assert "Doosan M0609" in a_parts[3].text and "UR10e" in a_parts[3].text
+    assert [s["config"].thinking_config.thinking_level.value for s in sent] == ["HIGH", "HIGH", "MEDIUM"]
     assert sent[0]["model"] == "gemini-4-argon"
     assert a.usage == {"prompt_tokens": 12000, "cached_tokens": 8000, "thoughts_tokens": 900,
                        "candidates_tokens": 400, "seconds": a.usage["seconds"],
