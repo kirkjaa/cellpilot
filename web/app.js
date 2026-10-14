@@ -125,7 +125,9 @@ function route() {
   current?.destroy();
   // #/s/<sid>, or #/session/<sid> so a screenshot tool can open an analysis directly.
   const m = /^#\/(?:s|session)\/([^/?#]+)/.exec(hash);
-  current = m ? new AnalysisView(decodeURIComponent(m[1])) : new SessionsView();
+  let sid = null;
+  if (m) { try { sid = decodeURIComponent(m[1]); } catch { sid = m[1]; } }
+  current = sid != null ? new AnalysisView(sid) : new SessionsView();
   window.scrollTo(0, 0);
 }
 
@@ -426,20 +428,23 @@ class AnalysisView {
 
     // Transport.
     this.playBtn = h('button', { type: 'button', class: 'btn play', 'aria-label': 'Play', onclick: () => this.player?.toggle() }, '▶');
-    this.timeOut = h('output', { class: 'time', title: 'cam0 time' }, '');
+    // Both outputs change every frame while playing: keep screen readers quiet.
+    this.timeOut = h('output', { class: 'time', title: 'cam0 time', 'aria-live': 'off' }, '');
     const prev = h('button', { type: 'button', class: 'btn', 'aria-label': 'Previous step', onclick: () => this.jump(-1) }, '◀ step');
     const next = h('button', { type: 'button', class: 'btn', 'aria-label': 'Next step', onclick: () => this.jump(1) }, 'step ▶');
     this.speedBtns = SPEEDS.map((r) => h('button', {
       type: 'button', class: 'btn', 'aria-pressed': String(r === 1), onclick: () => this.setSpeed(r),
     }, `${r}×`));
     const speed = h('div', { class: 'speed', role: 'group', 'aria-label': 'Playback speed' }, this.speedBtns);
-    this.cycleOut = h('output', { class: 'cycle' }, '');
+    this.cycleOut = h('output', { class: 'cycle', 'aria-live': 'off' }, '');
     this.debugBox = h('input', { type: 'checkbox', id: 'sync-debug' });
     this.debugBox.addEventListener('change', () => {
       this.driftOut.hidden = !this.debugBox.checked;
       this.renderDrift(true);
     });
-    const debug = h('label', { class: 'debug-toggle', for: 'sync-debug' }, this.debugBox, 'sync debug');
+    // The drift readout is for us, not for judges: it shows only with ?debug in the URL.
+    const debug = h('label', { class: 'debug-toggle', for: 'sync-debug', hidden: !location.search.includes('debug') },
+      this.debugBox, 'sync debug');
     this.driftOut = h('output', { class: 'drift', hidden: true, 'aria-label': 'Measured drift of each camera against cam0' });
     const transport = h('div', { class: 'transport' },
       this.playBtn, this.timeOut, h('span', { class: 'nav' }, prev, next), speed, this.cycleOut, debug);
@@ -885,7 +890,7 @@ class AnalysisView {
       const v = num(d[key]);
       const def = Number.isFinite(v) ? String(+(v * scale).toFixed(6)) : '';
       const input = h('input', {
-        id, type: 'number', inputmode: 'decimal', min: '0', max: scale === 100 ? '100' : null, step, value: def,
+        id, type: 'number', inputmode: 'decimal', min: '0', max: scale === 100 ? '100' : '1000000000', step, value: def,
       });
       input.addEventListener('input', () => this.recompute());
       this.roiInputs[key] = { input, scale, def };
@@ -919,7 +924,7 @@ class AnalysisView {
     for (const [k, { input, scale }] of Object.entries(this.roiInputs)) {
       const raw = input.value.trim();
       const v = raw === '' ? NaN : Number(raw) / scale;
-      const invalid = !Number.isFinite(v) || v < 0 || (k === 'grant_share' && v > 1);
+      const invalid = !Number.isFinite(v) || v < 0 || v > (k === 'grant_share' ? 1 : 1e9);
       input.setAttribute('aria-invalid', String(invalid));
       bad ||= invalid;
       vals[k] = v;

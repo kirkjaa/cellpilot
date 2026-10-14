@@ -182,6 +182,12 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         # Starlette's FileResponse answers Range requests with 206, so the page can seek.
         return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "public, max-age=3600"})
 
+    @app.get("/dev/{path:path}", include_in_schema=False)
+    @app.get("/{name}.test.mjs", include_in_schema=False)
+    def development_files(path: str = "", name: str = ""):
+        """Mock server, fixture and tests: left out of the image, and never served from a local web/ either."""
+        raise HTTPException(404, "Not found")
+
     # Registered last so /api and /media win; check_dir=False lets the server start before web/ exists.
     app.mount("/", StaticFiles(directory=web_dir(), html=True, check_dir=False), name="web")
     return app

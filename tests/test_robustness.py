@@ -85,3 +85,9 @@ def test_api_error_text_is_short():
                                         "message": "denied on projects/secret-project/locations/global"}})
     msg = readable_error("steps", e)
     assert "secret-project" not in msg and msg.endswith("403 PERMISSION_DENIED")
+
+
+def test_development_files_are_not_served(make_client):
+    c = make_client()
+    for path in ("/dev/mock_server.py", "/dev/fixture-analysis.json", "/dev/shot-analysis.png", "/logic.test.mjs"):
+        assert c.get(path).status_code == 404, path
