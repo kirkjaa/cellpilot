@@ -1,0 +1,141 @@
+{
+  "_note": "HAND-WRITTEN DEVELOPMENT DATA for web/dev/mock_server.py only. Not a model output and not a result: the clips it points at (spikes/out/cam0-2.mp4) are synthetic test clips of a moving square, and every step, time, reason and number below was typed in by hand to exercise the page. The production page never loads this file; only the mock server reads it from disk.",
+  "sessions": [
+    {
+      "id": "dev-synthetic-01",
+      "name": "Synthetic test clips (development fixture)",
+      "kind": "sample",
+      "recorded": "2026-10-14",
+      "synthetic": true,
+      "clips": [
+        {"view": "cam0", "file": "cam0.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.0},
+        {"view": "cam1", "file": "cam1.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.2},
+        {"view": "cam2", "file": "cam2.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.45}
+      ]
+    },
+    {
+      "id": "dev-empty-01",
+      "name": "Synthetic test clips, not analysed yet (development fixture)",
+      "kind": "upload",
+      "recorded": "2026-10-14",
+      "synthetic": true,
+      "clips": [
+        {"view": "cam0", "file": "cam0.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.0},
+        {"view": "cam1", "file": "cam1.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.2},
+        {"view": "cam2", "file": "cam2.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.45}
+      ]
+    }
+  ],
+  "analyses": {
+    "dev-synthetic-01": {
+      "id": "a-dev-fixture-0001",
+      "session_id": "dev-synthetic-01",
+      "status": "done",
+      "stage": "done",
+      "live": false,
+      "model": "hand-written-fixture",
+      "started_at": "2026-10-14T09:00:00Z",
+      "finished_at": "2026-10-14T09:03:30Z",
+      "error": null,
+      "usage": {"prompt_tokens": 0, "output_tokens": 0, "seconds": 0.0},
+      "result": {
+        "summary": "HAND-WRITTEN DEVELOPMENT FIXTURE, not a model output. The clips show a synthetic moving square; these five steps over two cycles are invented to exercise the page.",
+        "cycles": 2,
+        "cycle_time_s": 4.8,
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Pick part from bin A",
+            "verdict": "automate",
+            "reasons": [
+              {"text": "Fixture text: rigid part with parallel faces, lifted straight up", "view": "cam1", "t_s": 0.6},
+              {"text": "Fixture text: same grip in both cycles", "view": "cam2", "t_s": 5.4}
+            ],
+            "occurrences": [{"cycle": 1, "start_s": 0.3, "end_s": 1.1}, {"cycle": 2, "start_s": 5.1, "end_s": 5.9}],
+            "parts": ["part"],
+            "confidence": 0.82,
+            "mean_duration_s": 0.8,
+            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.1, "note": ""},
+            "preflagged": false
+          },
+          {
+            "id": "s2",
+            "name": "Turn part to face the jig",
+            "verdict": "automate",
+            "reasons": [
+              {"text": "Fixture text: a single 90 degree turn about one axis", "view": "cam0", "t_s": 1.5}
+            ],
+            "occurrences": [{"cycle": 1, "start_s": 1.1, "end_s": 1.9}, {"cycle": 2, "start_s": 5.9, "end_s": 6.7}],
+            "parts": ["part"],
+            "confidence": 0.74,
+            "mean_duration_s": 0.8,
+            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.2, "note": ""},
+            "preflagged": false
+          },
+          {
+            "id": "s3",
+            "name": "Drive two screws",
+            "verdict": "needs_fixture",
+            "reasons": [
+              {"text": "Fixture text: the part is held by hand while the screws go in", "view": "cam2", "t_s": 2.4},
+              {"text": "Fixture text: a clamp would free the second hand", "view": "cam0", "t_s": 7.2}
+            ],
+            "occurrences": [{"cycle": 1, "start_s": 1.9, "end_s": 3.4}, {"cycle": 2, "start_s": 6.7, "end_s": 8.1}],
+            "parts": ["part", "screw"],
+            "confidence": 0.61,
+            "mean_duration_s": 1.45,
+            "verifier": {"agree": false, "verdict_agree": true, "timing_delta_s": 1.3, "note": "Fixture text: the step starts later in cam2; boundaries corrected."},
+            "preflagged": true
+          },
+          {
+            "id": "s4",
+            "name": "Visual check for scratches",
+            "verdict": "keep_human",
+            "reasons": [
+              {"text": "Fixture text: the operator tilts the part under the light and judges by eye", "view": "cam1", "t_s": 3.8}
+            ],
+            "occurrences": [{"cycle": 1, "start_s": 3.4, "end_s": 4.2}, {"cycle": 2, "start_s": 8.1, "end_s": 8.9}],
+            "parts": ["part"],
+            "confidence": 0.7,
+            "mean_duration_s": 0.8,
+            "verifier": {"agree": true, "verdict_agree": true, "timing_delta_s": 0.0, "note": ""},
+            "preflagged": false
+          },
+          {
+            "id": "s5",
+            "name": "Place in tray",
+            "verdict": "automate",
+            "reasons": [
+              {"text": "Fixture text: tray slots are fixed and visible from above", "view": "cam0", "t_s": 9.2}
+            ],
+            "occurrences": [{"cycle": 1, "start_s": 4.2, "end_s": 4.9}, {"cycle": 2, "start_s": 8.9, "end_s": 9.6}],
+            "parts": ["part"],
+            "confidence": 0.79,
+            "mean_duration_s": 0.7,
+            "verifier": null,
+            "preflagged": true
+          }
+        ],
+        "parts": [
+          {"name": "part", "mass_g": 120, "size_mm": [80, 40, 3], "confidence": 0.6},
+          {"name": "screw", "mass_g": 2, "size_mm": [12, 3, 3], "confidence": 0.5}
+        ],
+        "counts": {"automate": 3, "keep_human": 1, "needs_fixture": 1, "total": 5},
+        "automated_share": 0.479,
+        "robot": {
+          "model": "UR5e + Robotiq 2F-85",
+          "payload_kg": 5.0,
+          "reach_mm": 850,
+          "needed_payload_kg": 0.12,
+          "fits": true,
+          "why": "Fixture text: copied from the contract example to fill the robot card."
+        },
+        "roi_defaults": {
+          "currency": "SGD", "wage_per_h": 14.0, "shifts": 2, "hours_per_shift": 8, "days_per_year": 250,
+          "robot_price": 40000, "system_multiple": 3.0, "grant_share": 0.5, "grant_cap": 30000
+        }
+      },
+      "signoffs": {}
+    }
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "id": "a-20261014-165349-ba5a",
+  "session_id": "dev-synthetic",
+  "status": "done",
+  "stage": "done",
+  "live": false,
+  "model": "gemini-4-argon",
+  "started_at": "2026-10-14T16:53:49Z",
+  "finished_at": "2026-10-14T16:54:45Z",
+  "error": null,
+  "usage": {
+    "prompt_tokens": 7909,
+    "output_tokens": 3837,
+    "seconds": 56.7
+  },
+  "result": {
+    "summary": "Across two observed 5-second cycles, the workstation task consists of translating a rigid red block linearly from the left pickup zone across a central boundary line to the right drop-off zone. Because the part has a simple cuboidal geometry, low estimated mass, and follows a repeatable straight-line trajectory without requiring tactile feedback, both transfer stages can be fully automated using either the UR5e or Franka FR3 cobot equipped with a standard two-finger parallel gripper.",
+    "cycles": 2,
+    "cycle_time_s": 5.0,
+    "steps": [
+      {
+        "id": "s1",
+        "name": "Move red block to center line",
+        "verdict": "automate",
+        "reasons": [
+          {
+            "text": "The rigid square block translates along a straight, unobstructed path from the left zone toward the center dividing line, suitable for a two-finger parallel gripper.",
+            "view": "cam0",
+            "t_s": 1.0
+          },
+          {
+            "text": "Top-down perspective confirms the block maintains a constant orientation and repeatable start position with no complex manipulation required.",
+            "view": "cam1",
+            "t_s": 1.2
+          }
+        ],
+        "occurrences": [
+          {
+            "cycle": 1,
+            "start_s": 0.0,
+            "end_s": 2.0
+          },
+          {
+            "cycle": 2,
+            "start_s": 5.0,
+            "end_s": 7.0
+          }
+        ],
+        "parts": [
+          "red block"
+        ],
+        "confidence": 0.95,
+        "mean_duration_s": 2.0,
+        "verifier": {
+          "agree": true,
+          "verdict_agree": true,
+          "timing_delta_s": 0.0,
+          "note": "The step boundaries and linear motion to the center line match across cam0, cam1, and cam2 after accounting for each camera's offset."
+        },
+        "preflagged": false
+      },
+      {
+        "id": "s2",
+        "name": "Transfer red block to right zone",
+        "verdict": "automate",
+        "reasons": [
+          {
+            "text": "The block crosses the center boundary line and continues along a linear trajectory to the right placement zone well within the 850 mm cobot reach.",
+            "view": "cam0",
+            "t_s": 3.0
+          },
+          {
+            "text": "Third camera view verifies smooth, unobstructed linear travel to a consistent end position without requiring tactile judgement.",
+            "view": "cam2",
+            "t_s": 3.45
+          }
+        ],
+        "occurrences": [
+          {
+            "cycle": 1,
+            "start_s": 2.0,
+            "end_s": 5.0
+          },
+          {
+            "cycle": 2,
+            "start_s": 7.0,
+            "end_s": 10.0
+          }
+        ],
+        "parts": [
+          "red block"
+        ],
+        "confidence": 0.95,
+        "mean_duration_s": 3.0,
+        "verifier": {
+          "agree": true,
+          "verdict_agree": true,
+          "timing_delta_s": 0.0,
+          "note": "The crossing of the center line at 2.0 s and 7.0 s and completion at 5.0 s and 10.0 s match what is seen in cam0, cam1, and cam2."
+        },
+        "preflagged": false
+      }
+    ],
+    "parts": [
+      {
+        "name": "red block",
+        "mass_g": 150.0,
+        "size_mm": [
+          60.0,
+          60.0,
+          60.0
+        ],
+        "confidence": 0.85
+      }
+    ],
+    "counts": {
+      "automate": 2,
+      "keep_human": 0,
+      "needs_fixture": 0,
+      "total": 2
+    },
+    "automated_share": 1.0,
+    "robot": {
+      "model": "UR5e + Robotiq 2F-85",
+      "payload_kg": 5.0,
+      "reach_mm": 850.0,
+      "needed_payload_kg": 1.15,
+      "fits": true,
+      "why": "Needed payload 1.15 kg: the heaviest of the parts in the automatable steps is red block at about 150 g plus a 1 kg allowance for the gripper and fingers, assuming the rated payload is at the tool flange and excludes the gripper. Every arm in the catalogue carries it; UR5e + Robotiq 2F-85 is preferred for its 5 kg payload, leaving 3.85 kg of margin (also enough: Franka FR3 (3 kg))."
+    },
+    "roi_defaults": {
+      "currency": "SGD",
+      "wage_per_h": 14.0,
+      "shifts": 2,
+      "hours_per_shift": 8.0,
+      "days_per_year": 250,
+      "robot_price": 40000.0,
+      "system_multiple": 3.0,
+      "grant_share": 0.5,
+      "grant_cap": 30000.0
+    }
+  },
+  "signoffs": {}
+}

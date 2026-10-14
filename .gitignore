@@ -2,12 +2,20 @@
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# Local store (live analyses, limits, Argon answers)
+data/
 
 # Never commit credentials
 *.json.key
 *service-account*.json
 *-sa.json
 gcp*.json
+credentials*.json
+*.pem
+*.p12
+.gcp/
 .env
 .env.*
 
