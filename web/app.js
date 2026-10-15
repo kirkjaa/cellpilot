@@ -5,6 +5,7 @@ import {
   layoutTimeline, activeSegmentIndex, cycleAt, totalCycles, adjacentStart,
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
+  offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
 } from './logic.js';
 
 const POLL_MS = 5000;
@@ -62,7 +63,7 @@ function fmtSeconds(s) {
   return s < 90 ? `${Math.round(s)} s` : `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
 }
 
-async function api(path, { method = 'GET', body } = {}) {
+async function api(path, { method = 'GET', body, signal } = {}) {
   let res;
   try {
     res = await fetch(path, {
@@ -70,6 +71,7 @@ async function api(path, { method = 'GET', body } = {}) {
       cache: 'no-store',
       headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
   } catch {
     return { ok: false, status: 0, data: null, error: 'Could not reach the server. Check the connection and try again.' };
@@ -252,6 +254,7 @@ function route() {
   if (m && m[2] === 'report') current = new ReportView(dec(m[1]), m[3] ? dec(m[3]) : null);
   else if (m) current = new AnalysisView(dec(m[1]));
   else if (/^#\/guide/.test(hash)) current = new GuideView();
+  else if (/^#\/capture/.test(hash)) current = new CaptureView();
   else current = new SessionsView();
   window.scrollTo(0, 0);
 }
@@ -1522,7 +1525,12 @@ class GuideView {
     document.title = 'CellPilot · Capture guide';
     main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture guide'),
       h('p', { class: 'lead muted' }, 'What CellPilot needs from the shop floor: three static cameras around one bench, started together, and 8 to 10 cycles of the real job.'),
-      h('div', { class: 'guide' },
+      h('div', { class: 'guide' }, ...GuideView.sections()));
+  }
+
+  /** The four guide sections; the capture studio shows them too when no bridge answers. */
+  static sections() {
+    return [
         h('section', { class: 'card' }, h('h2', null, '1 · Where the cameras go'), h('div', { class: 'guide-pic' }, GuideView.placement()),
           h('ul', null,
             h('li', null, h('b', null, 'cam0'), ' faces the operator from across the bench, about 1.5 to 2 m away and 1.6 to 1.8 m high, tilted down: it sees the hands, the parts and the bins. It is the master clock.'),
@@ -1544,8 +1552,8 @@ class GuideView {
         h('section', { class: 'card' }, h('h2', null, '4 · Make the session folder'),
           h('p', null, 'A session is a folder with the three clips and a session.json. Re-encode each clip to 720p, constant 30 fps, a keyframe every second, no audio, so the three views scrub together in the browser:'),
           h('pre', { class: 'code' }, 'ffmpeg -i raw.mp4 -vf scale=-2:720 -r 30 -c:v libx264 -crf 20 -g 30 -keyint_min 30 -sc_threshold 0 -pix_fmt yuv420p -an -movflags +faststart cam0.mp4'),
-          h('p', null, 'Put the folder under ', h('code', null, 'samples/<id>/'), ' on the server (it ships inside the image), open it on the sessions page and run it live. From an M1 session, a converter reads the sync sidecars and writes this folder with the offsets in one go.'),
-          h('p', { class: 'small muted' }, 'Clips over 15 MB in total are sent to the model from the Cloud Storage bucket rather than inline.'))));
+          h('p', null, 'Put the folder under ', h('code', null, 'samples/<id>/'), ' on the server (it ships inside the image), open it on the sessions page and run it live. From an M1 take, the ', h('a', { href: '#/capture' }, 'capture studio'), ' reads the sync sidecars and writes this folder with the offsets in one click.'),
+          h('p', { class: 'small muted' }, 'Clips over 15 MB in total are sent to the model from the Cloud Storage bucket rather than inline.'))];
   }
 
   static SESSION_JSON = `{
@@ -1587,6 +1595,484 @@ class GuideView {
   }
 
   destroy() { this.alive = false; }
+}
+
+/* ---------------------------------------------------------- capture studio */
+
+// The capture half of the product. It talks to the local bridge (capture/bridge.py) on the PC
+// next to the rig; the bridge talks to the cameras and the controller. Without a bridge (the
+// cloud link) the page shows the guide and says so.
+const BRIDGE_DEFAULT = 'http://127.0.0.1:8095';
+const BRIDGE_KEY = 'cellpilot.bridge';
+const CHECKLIST_KEY = 'cellpilot.capture.checklist';
+const CHECKLIST = [
+  ['bench', 'Every camera sees the whole bench top and both hands all the time'],
+  ['cam0', 'cam0 faces the operator from across the bench, 1.5 to 2 m away, 1.6 to 1.8 m high, tilted down'],
+  ['sides', 'cam1 and cam2 stand left and right, about 45° off cam0, at the same distance'],
+  ['fixed', 'Each camera is on a tripod or a clamp; nothing will move it during the take'],
+  ['clear', 'Nothing between a camera and the bench; no one will walk through'],
+  ['light', 'Even light, no strong backlight; parts and bins visible, not hidden under the hands'],
+  ['scale', 'Something of known size is in view (a bin, a ruler, the part itself)'],
+  ['cycles', 'The operator will run 8 to 10 complete cycles at the usual pace'],
+];
+const TAKE_ACTIVE = ['arming', 'armed', 'recording'];
+
+function bridgeUrl() {
+  const q = new URLSearchParams(location.search).get('bridge');
+  if (q && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(q)) storage.set('localStorage', BRIDGE_KEY, q);
+  return (storage.get('localStorage', BRIDGE_KEY) || BRIDGE_DEFAULT).replace(/\/+$/, '');
+}
+
+class CaptureView {
+  constructor() {
+    this.alive = true;
+    this.timers = new Set();
+    this.bridge = bridgeUrl();
+    this.cards = new Map();
+    this.take = null;
+    this.job = null;
+    this.previewOn = true;
+    this.folderMode = null;
+    document.title = 'CellPilot · Capture studio';
+    main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture studio'),
+      h('p', { class: 'muted' }, 'Looking for the capture bridge on this PC…'));
+    this.probe();
+  }
+
+  base() { return `${this.bridge}/api/capture`; }
+
+  every(ms, fn) {
+    const id = setInterval(() => { if (this.alive) fn(); }, ms);
+    this.timers.add(id);
+  }
+
+  async probe() {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 2500);
+    const r = await api(`${this.base()}/health`, { signal: ctl.signal });
+    clearTimeout(t);
+    if (!this.alive) return;
+    if (r.ok && r.data?.bridge === 'cellpilot-capture') this.buildStudio(r.data);
+    else this.buildFallback();
+  }
+
+  /* ----- no bridge: the guide, labelled */
+
+  buildFallback() {
+    main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture studio'),
+      h('section', { class: 'card note', role: 'note', 'aria-label': 'Where the capture studio runs' },
+        h('h2', null, 'Capture studio runs on the PC next to the rig'),
+        h('p', null, 'On that PC a small bridge (', h('code', null, 'python -m capture.bridge'), ', localhost:8095) speaks to the three NODAL M1 cameras and the rig controller. '
+          + 'This page then shows the cameras online with battery and live previews, a placement checklist, a one-button take (arm, RF trigger, record, stop), '
+          + 'the sync check read from the cameras’ sidecars, and “Make session”, which writes the folder the analysis runs on.'),
+        h('p', { class: 'small muted' }, 'No bridge answered from this browser, which is expected on the cloud link. Below is the capture guide the studio follows; sessions recorded with it appear on the ', h('a', { href: '#/' }, 'sessions page'), '.')),
+      h('div', { class: 'guide' }, ...GuideView.sections()));
+  }
+
+  /* ----- the studio */
+
+  buildStudio(health) {
+    this.status = h('p', { class: 'cap-status muted small', 'aria-live': 'polite' });
+
+    // 1 · cameras
+    this.camGrid = h('div', { class: 'cam-grid' });
+    this.previewBtn = h('button', { type: 'button', class: 'btn', 'aria-pressed': 'true', onclick: () => this.togglePreview() }, 'Previews on');
+    this.presetSel = h('select', { 'aria-label': 'Camera preset' });
+    const applyBtn = h('button', { type: 'button', class: 'btn', onclick: () => this.applyPreset() }, 'Apply preset');
+    const pingBtn = h('button', { type: 'button', class: 'btn', onclick: () => this.ping() }, 'Ping');
+    this.camMsg = h('p', { class: 'small cap-msg', 'aria-live': 'polite' });
+    const camsCard = h('section', { class: 'card', 'aria-labelledby': 'cams-h' },
+      h('h2', { id: 'cams-h' }, '1 · Cameras'),
+      h('div', { class: 'cap-tools' }, this.previewBtn, h('label', null, 'Preset ', this.presetSel), applyBtn, pingBtn),
+      this.camGrid, this.camMsg,
+      h('p', { class: 'fine' }, 'Status comes from each camera’s heartbeat twice a second; previews are the cameras’ own JPEG frames at 4 a second. Battery is four bars, as the cameras report it.'));
+
+    // 2 · placement
+    const saved = (() => { try { return JSON.parse(storage.get('localStorage', CHECKLIST_KEY) || '{}'); } catch { return {}; } })();
+    this.checks = {};
+    this.checkCount = h('p', { class: 'small muted' });
+    const list = h('ul', { class: 'checklist' }, CHECKLIST.map(([key, text]) => {
+      const box = h('input', { type: 'checkbox', id: `chk-${key}`, checked: Boolean(saved[key]) });
+      box.addEventListener('change', () => this.saveChecklist());
+      this.checks[key] = box;
+      return h('li', null, h('label', { for: `chk-${key}` }, box, h('span', null, text)));
+    }));
+    const placeCard = h('section', { class: 'card', 'aria-labelledby': 'place-h' },
+      h('h2', { id: 'place-h' }, '2 · Placement checklist'),
+      h('p', { class: 'small muted' }, 'Tick each point while looking at the previews. The ', h('a', { href: '#/guide' }, 'capture guide'), ' has the drawing.'),
+      list, this.checkCount);
+
+    // 3 · take
+    this.nameIn = h('input', { id: 'take-name', type: 'text', maxlength: '80', value: 'kitting', autocomplete: 'off' });
+    this.secIn = h('input', { id: 'take-sec', type: 'number', inputmode: 'numeric', min: '3', max: '900', step: '1', value: '20' });
+    this.recordBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.record() }, '● Record a take');
+    this.stopBtn = h('button', { type: 'button', class: 'btn', hidden: true, onclick: () => this.stopTake() }, '■ Stop');
+    this.stageBox = h('div', { class: 'stages' });
+    this.takeBar = h('span');
+    this.takeBarWrap = h('div', { class: 'take-bar', hidden: true, role: 'progressbar', 'aria-label': 'Recording progress' }, this.takeBar);
+    this.takeLines = h('ul', { class: 'take-lines' });
+    this.takeMsg = h('p', { class: 'small cap-msg', role: 'status' });
+    const takeCard = h('section', { class: 'card', 'aria-labelledby': 'take-h' },
+      h('h2', { id: 'take-h' }, '3 · Record a take'),
+      h('div', { class: 'take-form' },
+        h('div', { class: 'field' }, h('label', { for: 'take-name' }, 'Name (the session folder on the cameras)'), this.nameIn),
+        h('div', { class: 'field narrow' }, h('label', { for: 'take-sec' }, 'Seconds'), this.secIn),
+        this.recordBtn, this.stopBtn),
+      this.stageBox, this.takeBarWrap, this.takeLines, this.takeMsg,
+      h('p', { class: 'fine' }, 'One click: the controller disarms and arms every camera, then sends the RF trigger. Each camera records from its first frame after the trigger and stops by itself after the seconds given. The clips stay on the cameras until offloaded; the emulator writes them straight into the offload folder.'));
+
+    // 4 · offset check
+    this.checkBox = h('div', { class: 'offset-check' }, h('p', { class: 'muted small' }, 'After a take: how long after the RF trigger each camera’s first frame came, and the offsets that go into session.json.'));
+    this.folderIn = h('input', { id: 'chk-folder', type: 'text', placeholder: 'offload folder of a take', autocomplete: 'off' });
+    this.clipIn = h('input', { id: 'chk-clip', type: 'text', placeholder: 'take_001', autocomplete: 'off' });
+    this.folderSel = h('select', { 'aria-label': 'Takes already on this PC' }, h('option', { value: '' }, 'takes on this PC…'));
+    this.folderSel.addEventListener('change', () => this.pickFolder());
+    const checkFolderBtn = h('button', { type: 'button', class: 'btn', onclick: () => this.checkFolder() }, 'Check a folder');
+    this.checkMsg = h('p', { class: 'small cap-msg', role: 'status' });
+    const checkCard = h('section', { class: 'card', 'aria-labelledby': 'check-h' },
+      h('h2', { id: 'check-h' }, '4 · Offset check'),
+      this.checkBox,
+      h('details', { class: 'howto' }, h('summary', null, 'Recorded with NODAL Capture instead? Check its offload folder'),
+        h('div', { class: 'take-form' },
+          h('div', { class: 'field' }, h('label', { for: 'chk-folder' }, 'Folder'), this.folderIn),
+          h('div', { class: 'field narrow' }, h('label', { for: 'chk-clip' }, 'Clip'), this.clipIn),
+          this.folderSel, checkFolderBtn)),
+      this.checkMsg);
+
+    // 5 · make session
+    this.sidIn = h('input', { id: 'sess-id', type: 'text', maxlength: '80', autocomplete: 'off', value: suggestSessionId('kitting') });
+    this.sessNameIn = h('input', { id: 'sess-name', type: 'text', maxlength: '120', autocomplete: 'off', value: 'Kitting station' });
+    this.makeBtn = h('button', { type: 'button', class: 'btn primary', disabled: true, onclick: () => this.makeSession() }, 'Make session');
+    this.jobBox = h('div');
+    this.analyseLink = h('a', { class: 'btn primary', hidden: true }, 'Analyse it →');
+    this.sessMsg = h('p', { class: 'small cap-msg', role: 'status' });
+    const sessCard = h('section', { class: 'card', 'aria-labelledby': 'sess-h' },
+      h('h2', { id: 'sess-h' }, '5 · Make session'),
+      h('p', { class: 'small muted' }, 'Re-encodes the three clips to 720p (constant 30 fps, a keyframe a second) and writes session.json with the offsets into ', h('code', null, health.samples_dir || 'the samples folder'), '.'),
+      h('div', { class: 'take-form' },
+        h('div', { class: 'field' }, h('label', { for: 'sess-id' }, 'Session id'), this.sidIn),
+        h('div', { class: 'field' }, h('label', { for: 'sess-name' }, 'Name'), this.sessNameIn),
+        this.makeBtn, this.analyseLink),
+      this.jobBox, this.sessMsg);
+
+    main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture studio'),
+      h('p', { class: 'lead muted' }, 'Cameras online → previews → one-button take → sync check → session → analysis.'),
+      this.status,
+      h('div', { class: 'cap-grid' }, camsCard, placeCard, takeCard, checkCard, sessCard));
+
+    this.saveChecklist();
+    this.loadConfig();
+    this.pollCameras();
+    this.every(1000, () => this.pollCameras());
+    this.every(250, () => this.tickTake());
+    this.resumeTake();
+    api(`${this.base()}/preview`, { method: 'POST', body: { on: true, fps: 4, max_width: 640 } });
+  }
+
+  async loadConfig() {
+    const [cfg, presets, folders] = await Promise.all([
+      api(`${this.base()}/config`), api(`${this.base()}/presets`), api(`${this.base()}/folders`)]);
+    if (!this.alive) return;
+    const list = Array.isArray(presets.data) ? presets.data : ['1080p30', '720p30'];
+    const current = cfg.data?.preset || '1080p30';
+    this.presetSel.replaceChildren(...list.map((p) => h('option', { value: p, selected: p === current }, p)));
+    this.config = cfg.data || {};
+    this.fillFolders(folders.data);
+  }
+
+  fillFolders(data) {
+    const entries = Object.entries(data?.folders || {});
+    this.folderSel.replaceChildren(h('option', { value: '' }, entries.length ? 'takes on this PC…' : 'no takes on this PC yet'),
+      ...entries.flatMap(([session, clips]) => clips.map((clip) =>
+        h('option', { value: `${session}\u0000${clip}` }, `${session} / ${clip}`))));
+    this.offloadDir = data?.offload_dir || '';
+  }
+
+  pickFolder() {
+    const [session, clip] = this.folderSel.value.split('\u0000');
+    if (!session) return;
+    this.folderIn.value = `${this.offloadDir}${this.offloadDir.includes('/') ? '/' : '\\'}${session}`;
+    this.clipIn.value = clip || '';
+  }
+
+  saveChecklist() {
+    const state = {};
+    let n = 0;
+    for (const [k, box] of Object.entries(this.checks)) { state[k] = box.checked; n += box.checked ? 1 : 0; }
+    storage.set('localStorage', CHECKLIST_KEY, JSON.stringify(state));
+    this.checkCount.textContent = `${n} of ${CHECKLIST.length} checked${n === CHECKLIST.length ? ' · ready to record' : ''}`;
+  }
+
+  /* ----- cameras */
+
+  async pollCameras() {
+    const [h1, cams] = await Promise.all([api(`${this.base()}/health`), api(`${this.base()}/cameras`)]);
+    if (!this.alive) return;
+    if (!h1.ok || !cams.ok || !Array.isArray(cams.data)) {
+      this.status.textContent = 'The bridge stopped answering. Restart python -m capture.bridge on this PC and reload.';
+      return;
+    }
+    const hd = h1.data;
+    this.status.textContent = `Bridge ${this.bridge} · ${hd.cameras_online} of ${hd.cameras} cameras online · controller ${hd.controller_online ? 'online' : 'offline'}`
+      + `${hd.ffmpeg ? '' : ' · ffmpeg missing (Make session will fail)'}`;
+    const seen = new Set();
+    for (const c of cams.data) {
+      seen.add(c.id);
+      let card = this.cards.get(c.id);
+      if (!card) { card = this.camCard(c); this.cards.set(c.id, card); this.camGrid.append(card.el); }
+      this.updateCam(card, c);
+    }
+    for (const [id, card] of this.cards) if (!seen.has(id)) { card.el.remove(); this.cards.delete(id); }
+    if (!cams.data.length) this.camMsg.textContent = 'No cameras in the bridge config (capture.json): add their ids and ws:// addresses.';
+  }
+
+  camCard(c) {
+    const img = h('img', { class: 'cam-preview', alt: `${c.id} live preview` });
+    const card = { el: null, img, badge: h('span', { class: 'badge' }), meta: h('p', { class: 'small muted cam-meta' }),
+      over: h('span', { class: 'cam-over' }), streaming: false };
+    img.addEventListener('error', () => { card.streaming = false; img.removeAttribute('src'); });
+    card.el = h('div', { class: 'card cam-card' },
+      h('div', { class: 'cam-head' }, h('h3', null, c.id), card.badge),
+      h('div', { class: 'cam-box' }, img, card.over), card.meta);
+    return card;
+  }
+
+  updateCam(card, c) {
+    const b = cameraBadge(c);
+    card.badge.textContent = b.text;
+    card.badge.className = `badge ${b.kind}`;
+    card.meta.textContent = [
+      c.preset || '–', batteryText(c.battery),
+      Number.isFinite(num(c.chrony_offset_ms)) ? `clock ${formatMs(num(c.chrony_offset_ms))}` : null,
+      c.online ? `${c.preview_frames ?? 0} preview frames` : (c.error || 'not connected'),
+      c.simulated ? 'simulated' : null,
+    ].filter(Boolean).join(' · ');
+    const want = c.online && this.previewOn;
+    if (want && !card.streaming) {
+      card.img.src = `${this.base()}/cameras/${encodeURIComponent(c.id)}/preview.mjpeg?t=${Date.now()}`;
+      card.streaming = true;
+    } else if (!want && card.streaming) {
+      card.img.removeAttribute('src');
+      card.streaming = false;
+    }
+    card.over.textContent = !c.online ? 'offline' : !this.previewOn ? 'previews off'
+      : (c.preview_age_s == null || c.preview_age_s > 3) ? 'waiting for a frame…' : '';
+  }
+
+  async togglePreview() {
+    this.previewOn = !this.previewOn;
+    this.previewBtn.textContent = this.previewOn ? 'Previews on' : 'Previews off';
+    this.previewBtn.setAttribute('aria-pressed', String(this.previewOn));
+    const r = await api(`${this.base()}/preview`, { method: 'POST', body: { on: this.previewOn, fps: 4, max_width: 640 } });
+    if (!this.alive) return;
+    this.camMsg.textContent = r.ok ? '' : `Preview request failed: ${r.error}`;
+    this.pollCameras();
+  }
+
+  async applyPreset() {
+    const preset = this.presetSel.value;
+    this.camMsg.textContent = `Configuring ${preset} on every camera (a second or two)…`;
+    const r = await api(`${this.base()}/configure`, { method: 'POST', body: { preset } });
+    if (!this.alive) return;
+    if (!r.ok) { this.camMsg.textContent = `Configure failed: ${r.error}`; return; }
+    const bad = Object.entries(r.data.nodes || {}).filter(([, v]) => !v.ok).map(([id, v]) => `${id}: ${v.reason || 'refused'}`);
+    this.camMsg.textContent = bad.length ? `Not configured: ${bad.join('; ')}` : `All cameras on ${preset}.`;
+  }
+
+  async ping() {
+    const r = await api(`${this.base()}/cameras/ping`, { method: 'POST' });
+    if (!this.alive) return;
+    if (!r.ok) { this.camMsg.textContent = `Ping failed: ${r.error}`; return; }
+    this.camMsg.textContent = Object.entries(r.data).map(([id, p]) => p.error ? `${id}: ${p.error}`
+      : `${id}: ${p.rtt_ms} ms round trip${Number.isFinite(num(p.wall_offset_ms)) ? `, clock ${formatMs(num(p.wall_offset_ms))} vs this PC` : ''}`).join(' · ');
+  }
+
+  /* ----- take */
+
+  async resumeTake() {
+    const r = await api(`${this.base()}/takes`);
+    if (!this.alive || !r.ok || !Array.isArray(r.data) || !r.data.length) return;
+    this.showTake(r.data[r.data.length - 1]);
+    this.pollTake();
+  }
+
+  async record() {
+    const name = this.nameIn.value.trim() || 'kitting';
+    const seconds = Number(this.secIn.value);
+    if (!(seconds >= 3 && seconds <= 900)) { this.takeMsg.textContent = 'Seconds: 3 to 900.'; this.secIn.focus(); return; }
+    this.recordBtn.disabled = true;
+    this.takeMsg.textContent = 'Arming the cameras and sending the trigger…';
+    const r = await api(`${this.base()}/takes`, { method: 'POST', body: { name, seconds } });
+    if (!this.alive) return;
+    if (!r.ok || !r.data?.id) {
+      this.takeMsg.textContent = `Could not start the take: ${r.error || 'no answer'}`;
+      this.recordBtn.disabled = false;
+      return;
+    }
+    this.sidIn.value = suggestSessionId(name);
+    this.sessNameIn.value = name;
+    this.showTake(r.data);
+    this.pollTake();
+  }
+
+  async stopTake() {
+    if (!this.take) return;
+    this.stopBtn.disabled = true;
+    const r = await api(`${this.base()}/takes/${encodeURIComponent(this.take.id)}/stop`, { method: 'POST' });
+    if (!this.alive) return;
+    this.stopBtn.disabled = false;
+    if (r.ok) this.showTake(r.data); else this.takeMsg.textContent = `Stop failed: ${r.error}`;
+  }
+
+  takeActive(t = this.take) {
+    return Boolean(t) && (TAKE_ACTIVE.includes(t.state) || (t.state === 'stopped' && !t.offloaded && !t.check_error));
+  }
+
+  async pollTake() {
+    clearTimeout(this.takeTimer);
+    const t = this.take;
+    if (!this.alive || !t) return;
+    const r = await api(`${this.base()}/takes/${encodeURIComponent(t.id)}`);
+    if (!this.alive || this.take?.id !== t.id) return;
+    if (r.ok && r.data) this.showTake(r.data);
+    if (this.takeActive()) this.takeTimer = setTimeout(() => this.pollTake(), 500);
+  }
+
+  tickTake() {
+    const t = this.take;
+    if (!t || !TAKE_ACTIVE.includes(t.state)) return;
+    this.takeBar.style.width = `${takeProgress(t, Date.now() / 1000) * 100}%`;
+    this.renderStages(t);
+  }
+
+  renderStages(t) {
+    const chips = [];
+    takeStages(t).forEach(({ name, state }, i) => {
+      if (i) chips.push(h('span', { class: 'arrow', 'aria-hidden': 'true' }, '→'));
+      chips.push(h('span', { class: `stage ${state}` }, `${name}${state === 'done' ? ' ✓' : state === 'run' ? ' …' : state === 'failed' ? ' ✗' : ''}`));
+    });
+    const elapsed = Number.isFinite(num(t.elapsed_s)) ? t.elapsed_s : (t.state === 'recording' && t.started_at ? Date.now() / 1000 - t.started_at : null);
+    this.stageBox.replaceChildren(h('b', { class: 'stage-label' }, `${t.clip} in ${t.session}`), ...chips,
+      Number.isFinite(elapsed) ? h('span', { class: 'elapsed' }, `${Math.max(0, elapsed).toFixed(1)} s of ${t.seconds} s`) : null);
+  }
+
+  showTake(t) {
+    this.take = t;
+    this.renderStages(t);
+    this.takeBarWrap.hidden = !(t.state === 'recording' || t.state === 'stopped');
+    this.takeBar.style.width = `${takeProgress(t, Date.now() / 1000) * 100}%`;
+    this.takeLines.replaceChildren(...takeCameraLines(t).map((l) => h('li', { class: l.kind }, l.text)));
+    const active = TAKE_ACTIVE.includes(t.state);
+    this.recordBtn.disabled = active;
+    this.stopBtn.hidden = !(t.state === 'armed' || t.state === 'recording');
+    this.takeMsg.className = `small cap-msg${t.state === 'failed' ? ' error' : ''}`;
+    if (t.state === 'failed') this.takeMsg.textContent = t.error || 'The take failed.';
+    else if (t.state === 'arming') this.takeMsg.textContent = 'Arming the cameras and sending the trigger…';
+    else if (t.state === 'armed') this.takeMsg.textContent = `Trigger sent (edge ${t.edge_id ?? '?'}); waiting for the cameras to start…`;
+    else if (t.state === 'recording') this.takeMsg.textContent = 'Recording. The cameras stop by themselves.';
+    else if (t.offloaded) this.takeMsg.textContent = `Clips and sidecars found in ${t.folder}.`;
+    else if (t.check_error) this.takeMsg.textContent = t.check_error;
+    else this.takeMsg.textContent = 'Recorded. Waiting for the clips to appear in the offload folder…';
+    if (t.check) { this.folderMode = null; this.showCheck(t.check, `${t.folder} · ${t.clip}`); }
+    const ready = t.state === 'stopped' && t.offloaded && !this.job;
+    this.makeBtn.disabled = !ready && !this.folderMode;
+    if (ready) this.sessMsg.textContent = `Ready: ${t.clip} of ${t.session}.`;
+  }
+
+  /* ----- offset check */
+
+  showCheck(check, where) {
+    const o = offsetRows(check);
+    const rows = o.rows.map((r) => h('div', { class: 'off-row' },
+      h('span', { class: 'off-view' }, h('b', null, r.view), ` ${r.id}`),
+      h('div', { class: 'off-bar', role: 'img', 'aria-label': `${r.id}: ${r.delay_ms.toFixed(1)} ms after the trigger` },
+        h('span', { class: 'off-fill', style: { width: `${Math.max(0.5, r.pct)}%` } }),
+        h('i', { class: 'off-frame', style: { left: `${Math.min(99.5, o.frame_pct)}%` }, title: `one frame, ${o.frame_ms.toFixed(1)} ms` })),
+      h('span', { class: 'off-num' }, `${r.delay_ms.toFixed(1)} ms after the trigger · offset ${formatMs(r.offset_ms)}`)));
+    const verdict = o.rows.length
+      ? h('p', { class: o.ok ? 'ok-msg' : 'error', role: 'status' },
+        o.ok ? `Spread ${o.spread_ms.toFixed(1)} ms: within one frame (${o.frame_ms.toFixed(1)} ms at ${check.fps || 30} fps). cam0 is ${o.ref}, the earliest camera.`
+          : `Spread ${o.spread_ms.toFixed(1)} ms is more than one frame (${o.frame_ms.toFixed(1)} ms): check that every camera heard the trigger and the preset is the same on all.`)
+      : h('p', { class: 'error' }, 'No delays in this check.');
+    const missing = Array.isArray(check.missing) && check.missing.length
+      ? h('p', { class: 'error', role: 'alert' }, `No clip from ${check.missing.join(', ')}: that camera did not record or has not offloaded.`) : null;
+    this.checkBox.replaceChildren(h('p', { class: 'small muted' }, where), ...rows, verdict, missing,
+      h('p', { class: 'fine' }, 'Each camera records from its first frame after the RF trigger; the delay is that frame’s time minus the trigger’s time, both on the camera’s own clock, read from its sidecar. offset_s in session.json = delay − cam0’s delay. The mark on each bar is one frame.'));
+  }
+
+  async checkFolder() {
+    const folder = this.folderIn.value.trim();
+    const clip = this.clipIn.value.trim() || null;
+    if (!folder) { this.checkMsg.textContent = 'Type the offload folder of the take.'; this.folderIn.focus(); return; }
+    this.checkMsg.textContent = 'Reading the sidecars…';
+    const r = await api(`${this.base()}/check`, { method: 'POST', body: { folder, clip } });
+    if (!this.alive) return;
+    if (!r.ok) { this.checkMsg.textContent = r.error; return; }
+    this.checkMsg.textContent = '';
+    this.folderMode = { folder: r.data.folder, clip };
+    this.showCheck(r.data.check, `${r.data.folder}${clip ? ` · ${clip}` : ''}`);
+    this.makeBtn.disabled = Boolean(this.job);
+    this.sessMsg.textContent = `Ready: the folder ${r.data.folder}.`;
+  }
+
+  /* ----- make session */
+
+  async makeSession() {
+    const sid = this.sidIn.value.trim();
+    const name = this.sessNameIn.value.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(sid)) { this.sessMsg.textContent = 'Session id: letters, digits, dashes.'; this.sidIn.focus(); return; }
+    if (!name) { this.sessMsg.textContent = 'Give the session a name.'; this.sessNameIn.focus(); return; }
+    const body = { sid, name };
+    if (this.folderMode) Object.assign(body, this.folderMode);
+    else if (this.take?.state === 'stopped' && this.take.offloaded) body.take_id = this.take.id;
+    else { this.sessMsg.textContent = 'Record a take first, or check a folder.'; return; }
+    this.makeBtn.disabled = true;
+    this.analyseLink.hidden = true;
+    this.sessMsg.textContent = 'Encoding the three clips (about a minute per minute of footage)…';
+    let r = await api(`${this.base()}/sessions`, { method: 'POST', body });
+    if (!this.alive) return;
+    if (r.status === 409 && /already exists/.test(r.error || '') && window.confirm(`${r.error}\n\nOverwrite it?`)) {
+      r = await api(`${this.base()}/sessions`, { method: 'POST', body: { ...body, overwrite: true } });
+      if (!this.alive) return;
+    }
+    if (!r.ok || !r.data?.id) { this.sessMsg.textContent = `Not started: ${r.error}`; this.makeBtn.disabled = false; return; }
+    this.job = r.data;
+    this.pollJob();
+  }
+
+  async pollJob() {
+    const job = this.job;
+    if (!this.alive || !job) return;
+    const r = await api(`${this.base()}/sessions/${encodeURIComponent(job.id)}`);
+    if (!this.alive || this.job !== job) return;
+    const j = r.ok && r.data ? r.data : job;
+    this.jobBox.replaceChildren(h('pre', { class: 'job-log' }, (j.log || []).join('\n')));
+    if (j.status === 'done') {
+      this.job = null;
+      this.makeBtn.disabled = false;
+      this.sessMsg.textContent = `Session ${j.sid} written to ${j.out_dir}. Open it on the sessions page of the app that serves that folder.`;
+      this.analyseLink.href = j.url || `#/s/${encodeURIComponent(j.sid)}`;
+      this.analyseLink.hidden = false;
+      api(`${this.base()}/folders`).then((f) => { if (this.alive && f.ok) this.fillFolders(f.data); });
+      return;
+    }
+    if (j.status === 'failed') {
+      this.job = null;
+      this.makeBtn.disabled = false;
+      this.sessMsg.textContent = `Make session failed: ${j.error || 'no reason given'}`;
+      return;
+    }
+    this.sessMsg.textContent = j.status === 'queued' ? 'Queued…' : 'Encoding…';
+    this.jobTimer = setTimeout(() => this.pollJob(), 1000);
+  }
+
+  destroy() {
+    this.alive = false;
+    for (const id of this.timers) clearInterval(id);
+    clearTimeout(this.takeTimer);
+    clearTimeout(this.jobTimer);
+    for (const card of this.cards.values()) card.img.removeAttribute('src'); // closes the preview streams
+  }
 }
 
 addEventListener('hashchange', route);

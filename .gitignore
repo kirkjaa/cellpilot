@@ -21,3 +21,7 @@ credentials*.json
 
 # Local spike output
 spikes/out/
+
+# Capture bridge: the machine's own config and the takes it offloads
+capture.json
+capture_out/

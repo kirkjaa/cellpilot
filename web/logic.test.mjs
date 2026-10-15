@@ -6,6 +6,7 @@ import {
   layoutTimeline, activeSegmentIndex, cycleAt, totalCycles, adjacentStart,
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
+  offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
 } from './logic.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -287,4 +288,98 @@ test('metres formatting', () => {
   assert.equal(formatMetres(1.2, 0.6), '1.2 × 0.6 m');
   assert.equal(formatMetres(0.526), '0.53 m');
   assert.equal(formatMetres(undefined, 0.6), '? × 0.6 m');
+});
+
+/* ---- additions: capture studio */
+
+// The check the bridge computed on the emulator take of 15 October (delays after the RF edge).
+const CHECK = {
+  ref: 'rx-cam2', order: ['rx-cam2', 'rx-cam1', 'rx-cam3'], fps: 30,
+  delays_ms: { 'rx-cam1': 10.366, 'rx-cam2': 0.806, 'rx-cam3': 30.7 },
+};
+
+test('offset rows: cam0 is the earliest camera, offsets are delay differences, spread within a frame', () => {
+  const o = offsetRows(CHECK);
+  assert.deepEqual(o.rows.map((r) => [r.view, r.id]), [['cam0', 'rx-cam2'], ['cam1', 'rx-cam1'], ['cam2', 'rx-cam3']]);
+  near(o.rows[0].offset_ms, 0);
+  near(o.rows[1].offset_ms, 9.56);
+  near(o.rows[2].offset_ms, 29.894);
+  near(o.spread_ms, 29.894);
+  near(o.frame_ms, 1000 / 30);
+  assert.equal(o.ok, true);
+  // bars are scaled to one frame when every delay is shorter than a frame
+  near(o.rows[2].pct, (30.7 / (1000 / 30)) * 100);
+  near(o.frame_pct, 100);
+});
+
+test('offset rows without an order or ref derive them from the delays; a long delay fails the check', () => {
+  const o = offsetRows({ delays_ms: { a: 50, b: 2, c: 20 }, fps: 30 });
+  assert.equal(o.ref, 'b');
+  assert.deepEqual(o.rows.map((r) => r.id), ['b', 'c', 'a']);
+  assert.equal(o.ok, false);
+  near(o.spread_ms, 48);
+  near(o.rows[2].pct, 100); // the longest delay fills the bar; the frame mark sits inside
+  near(o.frame_pct, (1000 / 30 / 50) * 100);
+  assert.deepEqual(offsetRows(null).rows, []);
+  assert.equal(offsetRows({ delays_ms: { a: 'x' } }).ok, false);
+});
+
+test('milliseconds are signed with one decimal', () => {
+  assert.equal(formatMs(9.56), '+9.6 ms');
+  assert.equal(formatMs(0), '0.0 ms');
+  assert.equal(formatMs(-0.04), '0.0 ms');
+  assert.equal(formatMs(-12.34), '−12.3 ms');
+  assert.equal(formatMs(NaN), '–');
+});
+
+test('take stages follow the bridge states', () => {
+  const states = (t) => takeStages(t).map((s) => s.state);
+  assert.deepEqual(TAKE_STAGES, ['armed', 'recording', 'stopped', 'offloaded']);
+  assert.deepEqual(states(null), ['todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'arming' }), ['run', 'todo', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'armed' }), ['done', 'run', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'recording' }), ['done', 'run', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'stopped', offloaded: false }), ['done', 'done', 'done', 'run']);
+  assert.deepEqual(states({ state: 'stopped', offloaded: false, check_error: 'not yet' }), ['done', 'done', 'done', 'failed']);
+  assert.deepEqual(states({ state: 'stopped', offloaded: true }), ['done', 'done', 'done', 'done']);
+  assert.deepEqual(states({ state: 'failed', fired_at: null }), ['failed', 'todo', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'failed', fired_at: 1, cameras: {} }), ['done', 'failed', 'todo', 'todo']);
+  assert.deepEqual(states({ state: 'failed', fired_at: 1, cameras: { a: { started: true } } }), ['done', 'done', 'failed', 'todo']);
+});
+
+test('camera lines of a take', () => {
+  const take = {
+    state: 'recording', armed: ['rx-cam1', 'rx-cam2', 'rx-cam3'], not_armed: { 'rx-cam4': 'offline' },
+    cameras: { 'rx-cam1': { started: true, stopped: true, duration_s: 10.2, frames: 306 }, 'rx-cam2': { started: true } },
+  };
+  const lines = takeCameraLines(take);
+  assert.deepEqual(lines.map((l) => [l.id, l.kind]), [['rx-cam1', 'done'], ['rx-cam2', 'run'], ['rx-cam3', 'todo'], ['rx-cam4', 'failed']]);
+  assert.equal(lines[0].text, 'rx-cam1 · stopped · 10.2 s · 306 frames');
+  assert.equal(lines[1].text, 'rx-cam2 · recording');
+  assert.equal(lines[2].text, 'rx-cam3 · armed, waiting for the trigger');
+  assert.equal(lines[3].text, 'rx-cam4 · not armed: offline');
+  assert.equal(takeCameraLines({ state: 'failed', armed: ['x'], cameras: {} })[0].text, 'x · did not start');
+  assert.deepEqual(takeCameraLines(null), []);
+});
+
+test('battery text and camera badges', () => {
+  assert.equal(batteryText({ bars: 4, full: true, charging: false }), 'full');
+  assert.equal(batteryText({ bars: 2, full: false, charging: true }), '2 of 4 bars, charging');
+  assert.equal(batteryText(null), 'no battery reading');
+  assert.deepEqual(cameraBadge({ online: false }), { text: 'offline', kind: 'bad' });
+  assert.deepEqual(cameraBadge({ online: true, state: 'live', armed: null }), { text: 'live', kind: 'ok' });
+  assert.deepEqual(cameraBadge({ online: true, state: 'live', armed: { clip: 'take_001' } }), { text: 'armed', kind: 'warn' });
+  assert.deepEqual(cameraBadge({ online: true, state: 'recording' }), { text: 'recording', kind: 'warn' });
+  assert.deepEqual(cameraBadge({ online: true, state: 'error' }), { text: 'camera error', kind: 'bad' });
+  assert.deepEqual(cameraBadge({ online: true, state: null }), { text: 'connecting', kind: 'warn' });
+});
+
+test('session id suggestion and take progress', () => {
+  assert.equal(suggestSessionId('Kitting station, 9 cycles', new Date(2026, 9, 15)), 'kitting-station-9-cycles-20261015');
+  assert.equal(suggestSessionId('', new Date(2026, 9, 15)), 'take-20261015');
+  assert.equal(takeProgress({ state: 'recording', started_at: 100, seconds: 10 }, 105), 0.5);
+  assert.equal(takeProgress({ state: 'recording', started_at: 100, seconds: 10 }, 130), 1);
+  assert.equal(takeProgress({ state: 'stopped' }, 0), 1);
+  assert.equal(takeProgress({ state: 'armed' }, 0), 0);
+  assert.equal(takeProgress(null, 0), 0);
 });

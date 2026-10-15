@@ -393,3 +393,122 @@ export function formatMetres(a, b) {
   const f = (x) => (Number.isFinite(x) ? (Math.round(x * 100) / 100).toString() : '?');
   return b == null ? `${f(a)} m` : `${f(a)} × ${f(b)} m`;
 }
+
+/* ---------------------------------------------------------------- capture */
+
+export const TAKE_STAGES = ['armed', 'recording', 'stopped', 'offloaded'];
+
+/**
+ * The offset check as the capture page draws it, from the bridge's check object
+ * ({delays_ms: {node: ms}, fps, ref, order}). One row per camera in cam0.. order: its delay
+ * after the RF edge, its offset against the reference (cam0), and a bar width in % of the
+ * longer of the longest delay and one frame. `ok` when the spread is within one frame.
+ */
+export function offsetRows(check) {
+  const delays = check?.delays_ms || {};
+  const ids = Object.keys(delays).filter((k) => Number.isFinite(Number(delays[k])));
+  const fps = Number(check?.fps) > 0 ? Number(check.fps) : 30;
+  const frame_ms = 1000 / fps;
+  if (!ids.length) return { rows: [], ref: null, spread_ms: 0, frame_ms, frame_pct: 100, ok: false };
+  const d = (id) => Number(delays[id]);
+  const ref = ids.includes(check?.ref) ? check.ref : ids.reduce((a, b) => (d(b) < d(a) ? b : a));
+  const rest = ids.filter((id) => id !== ref).sort((a, b) => d(a) - d(b) || a.localeCompare(b));
+  const given = Array.isArray(check?.order) && check.order.length === ids.length && check.order.every((id) => ids.includes(id));
+  const order = given ? check.order : [ref, ...rest];
+  const min = Math.min(...ids.map(d));
+  const max = Math.max(...ids.map(d));
+  const scale = Math.max(max, frame_ms, 1e-9);
+  const rows = order.map((id, i) => ({
+    id, view: `cam${i}`, delay_ms: d(id), offset_ms: d(id) - d(ref), pct: (d(id) / scale) * 100,
+  }));
+  const spread_ms = max - min;
+  return { rows, ref, spread_ms, frame_ms, frame_pct: (frame_ms / scale) * 100, ok: spread_ms <= frame_ms + 1e-6 };
+}
+
+/** "+9.6 ms" (always signed, one decimal). */
+export function formatMs(ms) {
+  if (!Number.isFinite(ms)) return '–';
+  const v = Math.round(ms * 10) / 10;
+  return `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)} ms`;
+}
+
+/**
+ * Chips for a take: armed → recording → stopped → offloaded, each done | run | failed | todo.
+ * `take` is the bridge's take record (state: arming | armed | recording | stopped | failed).
+ */
+export function takeStages(take) {
+  const mk = (states) => TAKE_STAGES.map((name, i) => ({ name, state: states[i] }));
+  if (!take) return mk(['todo', 'todo', 'todo', 'todo']);
+  switch (take.state) {
+    case 'arming': return mk(['run', 'todo', 'todo', 'todo']);
+    case 'armed': return mk(['done', 'run', 'todo', 'todo']);
+    case 'recording': return mk(['done', 'run', 'todo', 'todo']);
+    case 'stopped':
+      return mk(['done', 'done', 'done', take.offloaded ? 'done' : take.check_error ? 'failed' : 'run']);
+    case 'failed': {
+      const started = Object.values(take.cameras || {}).some((c) => c && c.started);
+      if (!take.fired_at) return mk(['failed', 'todo', 'todo', 'todo']);
+      if (!started) return mk(['done', 'failed', 'todo', 'todo']);
+      return mk(['done', 'done', 'failed', 'todo']);
+    }
+    default: return mk(['todo', 'todo', 'todo', 'todo']);
+  }
+}
+
+/** One line per camera of a take: "rx-cam1 · recording", "rx-cam2 · stopped · 10.2 s · 306 frames". */
+export function takeCameraLines(take) {
+  const cams = take?.cameras || {};
+  const ids = [...new Set([...(take?.armed || []), ...Object.keys(cams)])];
+  const lines = ids.map((id) => {
+    const c = cams[id] || {};
+    const bits = [id];
+    if (c.stopped) {
+      bits.push('stopped');
+      if (Number.isFinite(Number(c.duration_s))) bits.push(`${Number(c.duration_s).toFixed(1)} s`);
+      if (Number.isFinite(Number(c.frames))) bits.push(`${c.frames} frames`);
+    } else if (c.started) bits.push('recording');
+    else bits.push(take?.state === 'failed' ? 'did not start' : 'armed, waiting for the trigger');
+    return { id, text: bits.join(' · '), kind: c.stopped ? 'done' : c.started ? 'run' : 'todo' };
+  });
+  for (const [id, why] of Object.entries(take?.not_armed || {})) {
+    lines.push({ id, text: `${id} · not armed: ${why}`, kind: 'failed' });
+  }
+  return lines;
+}
+
+/** "4 bars, charging" / "2 of 4 bars" / "no battery reading". */
+export function batteryText(b) {
+  if (!b || !Number.isFinite(Number(b.bars))) return 'no battery reading';
+  const bars = Math.max(0, Math.min(4, Math.round(Number(b.bars))));
+  const text = bars === 4 && b.full ? 'full' : `${bars} of 4 bars`;
+  return b.charging ? `${text}, charging` : text;
+}
+
+/** The badge for a camera card: {text, kind: ok | warn | bad}. */
+export function cameraBadge(c) {
+  if (!c) return { text: 'unknown', kind: 'bad' };
+  if (!c.online) return { text: 'offline', kind: 'bad' };
+  if (c.state === 'recording') return { text: 'recording', kind: 'warn' };
+  if (c.armed) return { text: 'armed', kind: 'warn' };
+  if (c.state === 'live') return { text: 'live', kind: 'ok' };
+  if (c.state === 'configuring') return { text: 'configuring', kind: 'warn' };
+  if (c.state === 'error') return { text: 'camera error', kind: 'bad' };
+  return { text: c.state ? String(c.state) : 'connecting', kind: 'warn' };
+}
+
+/** A session id from the take name and a date: "kitting-20261015". */
+export function suggestSessionId(name, date = new Date()) {
+  const stem = String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'take';
+  const d = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `${stem}-${ymd}`;
+}
+
+/** How far a recording take is through its seconds, 0..1 (1 once stopped). */
+export function takeProgress(take, nowS) {
+  if (!take) return 0;
+  if (take.state === 'stopped') return 1;
+  if (take.state !== 'recording' || !Number.isFinite(Number(take.started_at)) || !(Number(take.seconds) > 0)) return 0;
+  const elapsed = nowS - Number(take.started_at);
+  return Math.max(0, Math.min(1, elapsed / Number(take.seconds)));
+}

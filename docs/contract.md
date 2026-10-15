@@ -143,6 +143,58 @@ The page shows the inputs as editable fields and recomputes on change; it labels
 | `GET /api/sessions/{sid}/analyses/{aid}/export` | download result + sign-offs | JSON attachment |
 | `GET /media/{sid}/{file}` | clips, with HTTP range support for seeking | video/mp4 |
 
-Page routes (hash, no server round trip): `#/` sessions, `#/guide` the capture guide, `#/s/{sid}` the analysis, `#/s/{sid}/report[/{aid}]` the printable study (print or save as PDF from the browser).
+Page routes (hash, no server round trip): `#/` sessions, `#/guide` the capture guide, `#/capture` the capture studio, `#/s/{sid}` the analysis, `#/s/{sid}/report[/{aid}]` the printable study (print or save as PDF from the browser).
 
 The latest analysis for a sample is its stored one (with any sign-offs); a visitor's live run is shown to that visitor by its id, so a stray live result never replaces the curated sample for later visitors. A session with no stored analysis shows its newest finished live run. Daily live-run cap: `CELLPILOT_DAILY_LIVE_RUNS` (default 10); at most `CELLPILOT_MAX_RUNNING` (default 1) runs at once, and a second click during a run joins it.
+
+## Capture bridge
+
+A second, local service (`capture/`, `python -m capture.bridge`, **127.0.0.1:8095**, never deployed) between the page and a NODAL M1 rig. It holds one WebSocket per camera node and one to the rig controller, speaking their protocol (one JSON envelope `{"type", "payload", "id", "wall", "mono", "v": "4.0.0"}` per text frame, acks matched by `id`; binary preview frames). The controller owns the RF dongle: the bridge arms and fires only through the controller's `cmd.fire` and never opens a serial port. Config: `capture.json` (`cameras: [{id, url}]`, `controller: {url}`, `offload_dir`, `samples_dir`, `preset`, `allow_lan`); non-localhost addresses are refused unless `allow_lan` is true.
+
+The page (`#/capture`) probes `GET http://127.0.0.1:8095/api/capture/health` with a 2.5 s timeout. If a bridge answers it shows the studio; otherwise (the cloud link, or a PC without the bridge) it shows the capture guide under a note that says the studio runs on the PC next to the rig. The bridge answers CORS for localhost origins only (the page is served by the main app on another port).
+
+| Method and path | Purpose | Response |
+|---|---|---|
+| `GET /api/capture/health` | is a bridge here | `{"ok": true, "bridge": "cellpilot-capture", "version", "cameras", "cameras_online", "controller_online", "config", "ffmpeg"}` |
+| `GET /api/capture/config` | the loaded config | `{"cameras": [{"id", "url"}], "controller_url", "offload_dir", "samples_dir", "preset", "allow_lan", "path"}` |
+| `GET /api/capture/cameras` | one entry per configured camera, from its last heartbeat | `[{"id", "url", "online", "error", "state", "preset", "armed", "battery": {"bars": 0..4, "charging", "full"}, "chrony_offset_ms", "rf_ok", "simulated", "capture": {"dequeued", "dropped", "expected_per_sec", "last_frame_age_s", "pump_alive"}, "heartbeat_age_s", "preview_age_s", "preview_frames", "connects"}]` |
+| `POST /api/capture/cameras/ping` | `cmd.ping` to every camera | `{"<id>": {"rtt_ms", "wall_offset_ms", "state"} or {"error"}}` |
+| `GET /api/capture/cameras/{id}/preview.jpg` | the newest preview frame | image/jpeg (`X-Preview-Seq`, `X-Preview-Mono-Ns`), 404 before the first frame |
+| `GET /api/capture/cameras/{id}/preview.mjpeg` | the frames as they arrive | multipart/x-mixed-replace (an `<img>` plays it) |
+| `POST /api/capture/preview` | body `{"on", "fps": 4, "max_width": 640}`: `cmd.start_preview` / `cmd.stop_preview` to every camera | `{"preview", "nodes": {"<id>": {"ok", "reason", "payload"}}}` |
+| `POST /api/capture/configure` | body `{"preset"}`: `cmd.configure` to every camera (20 s) | `{"preset", "nodes"}` |
+| `GET /api/capture/presets` | presets the page offers | `["1080p30", "720p30", ...]` |
+| `GET /api/capture/controller` | the controller link and its `cmd.list_nodes` | `{"url", "online", "error", "nodes"}` |
+| `POST /api/capture/takes` | body `{"name", "seconds": 3..900}`: one take through the controller's `cmd.fire {session, clip, max_seconds}` | `202` take; `409` when a take is in progress or the controller is offline |
+| `GET /api/capture/takes[/{id}]` | poll every 0.5 s | take (below) |
+| `POST /api/capture/takes/{id}/stop` | `cmd.stop` through the controller | take |
+| `POST /api/capture/takes/{id}/check` | run the offset check again | take; `409` while the clips are not in the offload folder |
+| `POST /api/capture/check` | body `{"folder", "clip?", "ref?"}`: the offset check on any offload folder (a take recorded with NODAL Capture) | `{"folder", "check"}` |
+| `GET /api/capture/folders` | takes already on this PC | `{"offload_dir", "folders": {"<session>": ["take_001", ...]}}` |
+| `POST /api/capture/sessions` | body `{"sid", "name", "take_id" or "folder" (+ "clip"), "ref?", "overwrite?"}`: convert to `<samples_dir>/<sid>/` in a thread | `202` job; `409` when the id exists (unless `overwrite`) or the take is not stopped |
+| `GET /api/capture/sessions[/{id}]` | poll every 1 s | job `{"id", "status": "queued \| running \| done \| failed", "sid", "name", "folder", "clip", "out_dir", "error", "log": [], "session", "url": "#/s/<sid>"}` |
+
+### take
+
+```json
+{"id": "t-20261015-153414-d4ba", "name": "kitting", "session": "kitting", "clip": "take_001", "seconds": 20,
+ "state": "arming | armed | recording | stopped | failed", "error": null,
+ "created_at": 0, "fired_at": 0, "started_at": 0, "stopped_at": 0, "elapsed_s": 10.3,
+ "edge_id": 1, "rf_acked": true, "armed": ["rx-cam1", "rx-cam2", "rx-cam3"], "not_armed": {},
+ "cameras": {"rx-cam1": {"started": true, "stopped": true, "path": "...", "frames": 306, "duration_s": 10.2, "bytes": 0}},
+ "offloaded": true, "folder": "<offload_dir>/kitting", "check": {...}, "check_error": null}
+```
+
+`session` is the take's name cleaned to `[A-Za-z0-9_-]` (the folder on the cameras), `clip` is `take_NNN` numbered after the takes already in the offload folder. The take is `armed` when the controller's fire ack arrives, `recording` on the first camera's `evt.recording_started`, `stopped` when every camera that started has sent `evt.recording_stopped`; it fails if no camera starts within 6 s of the trigger. After the stop the bridge looks for `<clip>_<node>.{mp4,jsonl}` in the camera's reported path, then `<offload_dir>/<session>`, then `<offload_dir>`, for 20 s; `offloaded` becomes true together with `check`. With the real cameras the files arrive only after an offload, so "Check" and "Make session" can be run later.
+
+### check
+
+```json
+{"ref": "rx-cam2", "order": ["rx-cam2", "rx-cam1", "rx-cam3"], "fps": 30,
+ "delays_ms": {"rx-cam1": 10.366, "rx-cam2": 0.806, "rx-cam3": 30.7},
+ "offsets_s": {"rx-cam2": 0.0, "rx-cam1": 0.00956, "rx-cam3": 0.029894},
+ "views": {"rx-cam2": "cam0", "rx-cam1": "cam1", "rx-cam3": "cam2"},
+ "spread_ms": 29.894, "frame_ms": 33.333, "within_a_frame": true, "missing": []}
+```
+
+`delay = first_frame.mono_ns − edge_mono_ns` from each camera's sidecar, both on that camera's own monotonic clock (the cameras have no RTC; wall clocks are never used). `ref` is the earliest camera (or the one asked for) and becomes `cam0`; the others follow by delay; `offset_s = (delay − delay_ref) / 1e9` is exactly the `offset_s` written to `session.json`. The session folder also gets `sources.json` (which node became which view, the sidecar paths and this check).

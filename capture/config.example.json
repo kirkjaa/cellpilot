@@ -1,0 +1,12 @@
+{
+  "cameras": [
+    {"id": "rx-cam1", "url": "ws://127.0.0.1:5101"},
+    {"id": "rx-cam2", "url": "ws://127.0.0.1:5102"},
+    {"id": "rx-cam3", "url": "ws://127.0.0.1:5103"}
+  ],
+  "controller": {"url": "ws://127.0.0.1:5000"},
+  "offload_dir": "capture_out",
+  "samples_dir": "samples",
+  "preset": "1080p30",
+  "allow_lan": false
+}

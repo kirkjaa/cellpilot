@@ -21,6 +21,7 @@ The bundled sample session uses synthetic test clips (a red square crossing a li
 - **Sessions:** what a session is, the three-step flow, and how to bring your own footage.
 - **Analysis:** the "N of M steps can be automated" banner; the three views in sync with the evidence boxes drawn over them; the timeline; each step with its verdicts, reasons (click to seek and see the box), verifier note and sign-off; the **Layout** sketch (bench, objects, pick-to-place arrows, the proposed base, the chosen arm's reach circle and the needed reach); the **Robot** card with every catalogue arm judged; the **Cycle time** card (where the cycle goes by step, and the robot estimate with an editable speed factor); **Payback**.
 - **Printable study** (`#/s/<sid>/report`): one document with everything above and the sign-offs, for print or PDF. **Export JSON** gives the raw result and sign-offs.
+- **Capture studio** (`#/capture`): with the local bridge running next to the rig, the cameras, previews, the one-button take, the sync check and "Make session"; on the cloud link, the capture guide with a note that the studio runs on the rig PC.
 
 Every estimate says so on screen: the layout is "estimated from video", the robot cycle is an "estimate", price bands are "indicative".
 
@@ -29,14 +30,35 @@ Every estimate says so on screen: the layout is "estimated from video", the robo
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
-.venv\Scripts\python -m pytest            # no network: Argon is stubbed
+.venv\Scripts\python -m pytest            # no network: Argon is stubbed, the cameras are faked
 node --test web\logic.test.mjs            # the page's pure logic
 .venv\Scripts\python -m app.main          # http://localhost:8080, store in .\data
+.venv\Scripts\python -m capture.bridge    # the capture studio's local bridge, http://127.0.0.1:8095 (see below)
 ```
 
 Viewing the stored sample needs no credentials. A live run needs Vertex AI access through Application Default Credentials (`gcloud auth application-default login`) and `GOOGLE_CLOUD_PROJECT`. Settings: `CELLPILOT_MODEL` (default `gemini-4-argon`), `CELLPILOT_VIDEO_FPS` (default 1), `CELLPILOT_DAILY_LIVE_RUNS` (default 10), `CELLPILOT_MAX_RUNNING` (default 1), `CELLPILOT_STORE` (a folder, or `gs://bucket` in production). `web/dev/mock_server.py` serves the page with hand-written fixture data for front-end work.
 
 To regenerate a sample's stored analysis (three paid Argon calls): `python -m app.pipeline <sid> --save-sample`.
+
+## Capture studio
+
+The capture half of the product, on the PC next to the rig: cameras online → previews → one-button take → sync check → session → analysis. It is the page's `#/capture` route plus a small local bridge, `capture/`, that speaks the NODAL M1 cameras' WebSocket protocol (JSON envelopes, binary preview frames) and the rig controller's `cmd.fire`. The controller owns the RF trigger dongle; the bridge never touches a serial port. Endpoints are in `docs/contract.md` ("Capture bridge").
+
+```powershell
+copy capture\config.example.json capture.json      # camera ids and ws:// addresses, controller, folders
+.venv\Scripts\python -m capture.bridge             # 127.0.0.1:8095, localhost only
+.venv\Scripts\python -m app.main                   # the page; open http://localhost:8080/#/capture
+```
+
+`capture.json`: `cameras` (`id`, `url`, e.g. `ws://192.168.1.42:5100`), `controller.url` (the rig controller that fans out `cmd.fire`; the emulator's is `ws://127.0.0.1:5000`), `offload_dir` (where a take's clips and sidecars land on this PC), `samples_dir` (where "Make session" writes; `samples/` so the session ships with the app), `preset`. **`allow_lan` is false by default and the bridge refuses any address that is not localhost**; set it to true only for the real rig, with someone at the cameras.
+
+What the page does with a bridge running: camera cards (state, preset, battery bars, clock, live preview), a placement checklist, **Record a take** (name, seconds: the controller disarms and arms every camera, sends the RF trigger, each camera records from its first frame after the trigger and stops by itself), live state armed → recording → stopped → offloaded, the **offset check** (each camera's first frame delay after the trigger from its sidecar, the resulting offsets, the spread against one frame), and **Make session** (re-encode to 720p, write `session.json` with the offsets) with a link to the analysis. Without a bridge (the cloud link) the route shows the capture guide under a note saying so. A take recorded with NODAL Capture instead can be checked and converted from its offload folder on the same page, or from the command line:
+
+```powershell
+.venv\Scripts\python -m capture.convert <offload folder> samples\kitting-01 --id kitting-01 --name "Kitting station, 9 cycles" [--clip take_001] [--ref rx-cam1]
+```
+
+The whole flow is tested against the NODAL M1 emulator (three simulated cameras and the real controller on localhost): `tests/test_e2e_emulator.py`, run with `CELLPILOT_E2E_CONFIG` pointing at a bridge config for the running rig. The unit tests fake the cameras and the controller over real WebSockets.
 
 ## Deploy
 
