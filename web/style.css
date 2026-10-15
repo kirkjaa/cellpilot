@@ -564,3 +564,11 @@ select { font: inherit; color: inherit; background: var(--surface); border: 1px 
 .lane .seg-bar.unassigned > span { color: var(--text); }
 .lane .seg-bar.idle { background: transparent; }
 .lanes-note { margin: 6px 0 0; }
+
+/* the engineer's notes */
+.notes-card .owner { font-size: 15px; margin: 0 0 4px; }
+.notes-list { margin: 0; padding-left: 20px; font-size: 14px; }
+.notes-list li { margin: 3px 0; }
+.rec { font-size: 13.5px; margin: 6px 0 0; }
+.rec b { color: var(--primary); }
+@media (max-width: 900px) { .notes-card { order: 6; } }

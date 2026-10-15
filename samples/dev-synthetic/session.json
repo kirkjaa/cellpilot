@@ -5,8 +5,34 @@
   "recorded": "2026-10-14",
   "synthetic": true,
   "clips": [
-    {"view": "cam0", "file": "cam0.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.0},
-    {"view": "cam1", "file": "cam1.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.2},
-    {"view": "cam2", "file": "cam2.mp4", "fps": 30, "width": 640, "height": 360, "duration_s": 10.0, "offset_s": 0.45}
-  ]
+    {
+      "view": "cam0",
+      "file": "cam0.mp4",
+      "fps": 30,
+      "width": 640,
+      "height": 360,
+      "duration_s": 10.0,
+      "offset_s": 0.0
+    },
+    {
+      "view": "cam1",
+      "file": "cam1.mp4",
+      "fps": 30,
+      "width": 640,
+      "height": 360,
+      "duration_s": 10.0,
+      "offset_s": 0.2
+    },
+    {
+      "view": "cam2",
+      "file": "cam2.mp4",
+      "fps": 30,
+      "width": 640,
+      "height": 360,
+      "duration_s": 10.0,
+      "offset_s": 0.45
+    }
+  ],
+  "scenario": "",
+  "brief": "A synthetic test clip: a red square crosses a centre line, filmed by three synthetic cameras with real time offsets. No real parts or people."
 }

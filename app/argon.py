@@ -25,7 +25,8 @@ from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
 from .catalogue import public_catalogue
-from .schemas import ArgonLayout, Step, TaskGraph, Verify
+from .payback import payback
+from .schemas import ArgonLayout, Notes, Result, Step, TaskGraph, Verify
 from .store import Store
 
 log = logging.getLogger("cellpilot.argon")
@@ -44,6 +45,11 @@ class ArgonError(RuntimeError):
 
 def model_name() -> str:
     return os.environ.get("CELLPILOT_MODEL", "gemini-4-argon")
+
+
+def notes_model_name() -> str:
+    """The general Gemini model that writes the engineer's notes from the result (text only, no video)."""
+    return os.environ.get("CELLPILOT_NOTES_MODEL", "gemini-3.8-flash")
 
 
 def video_fps() -> float:
@@ -156,19 +162,47 @@ Return:
 """
 
 
+TASK_E = """You are a senior automation engineer writing the engineer's notes for a feasibility study. You did not see the video. You have the analysis below, made from three synchronized camera views by a vision model and checked by a second pass, plus the robot arm the app chose from its catalogue and the payback at the default inputs. Take every step, verdict and timing as given; never change a verdict or add a step.
+
+Station: {station}
+
+Steps, with the verdict (automate, needs_fixture or keep_human), mean duration in seconds, confidence, whether the check pass flagged the step, the reasons the vision model gave, and its verifier's note:
+{steps}
+
+Parts seen, with estimated mass in grams and size in millimetres:
+{parts}
+
+Robot arm chosen, with its checks:
+{robot}
+
+Cycle: {cycle_time_s} s by hand over {cycles} cycles. With the cobot, estimated: {cycle_estimate}
+
+Payback at the default inputs, in {currency}: {payback}
+
+Write for a production engineer at a small manufacturer: plain words, no marketing, numbers where you have them. Return:
+- for_the_owner: three or four plain sentences for the factory owner: what the cobot would take over, what stays with the operator, the payback in months, and the main caveat.
+- step_notes: one entry per step id above, and only those ids. recommendation: for an automate step, the gripper or approach and anything to watch; for a needs_fixture step, the fixture or presenter that would make it automatable; for a keep_human step, why it stays with the operator and what would have to change. fixture: the kind of fixture or presenter, or empty.
+- risks: the top three risks of this cell, each with a short title and one or two sentences on how to check it before buying.
+- next_steps: three to five concrete next steps for the engineer, in order: what to measure, what to try with a part in hand, whom to ask for a quote.
+- questions: up to three questions the engineer must answer before committing.
+"""
+
+
 # --------------------------------------------------------------------- calls
 
-def _generate(contents: list, schema: type[BaseModel], thinking: str) -> CallResult:
+def _generate(contents: list, schema: type[BaseModel], thinking: Optional[str], model: Optional[str] = None) -> CallResult:
+    """One schema-checked call. `thinking` None leaves the model's default; `model` None means Argon."""
+    name = model or model_name()
     config = types.GenerateContentConfig(
         response_mime_type="application/json",
         response_schema=schema,
-        thinking_config=types.ThinkingConfig(thinking_level=thinking),
+        thinking_config=types.ThinkingConfig(thinking_level=thinking) if thinking else None,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
     t0 = time.perf_counter()
     for attempt in range(3):
         try:
-            resp = client().models.generate_content(model=model_name(), contents=contents, config=config)
+            resp = client().models.generate_content(model=name, contents=contents, config=config)
             break
         except errors.APIError as e:
             if e.code not in RETRY_CODES or attempt == 2:
@@ -183,7 +217,7 @@ def _generate(contents: list, schema: type[BaseModel], thinking: str) -> CallRes
         "thoughts_tokens": (u and u.thoughts_token_count) or 0,
         "candidates_tokens": (u and u.candidates_token_count) or 0,
         "seconds": round(seconds, 2),
-        "model_version": resp.model_version or model_name(),
+        "model_version": resp.model_version or name,
     }
     text = resp.text or ""
     parsed = resp.parsed if isinstance(resp.parsed, schema) else None
@@ -220,3 +254,22 @@ def layout(session: dict, media: list[types.Part], steps: list[Step], parts: lis
     task = TASK_C.format(steps=json.dumps(brief, indent=1), parts=json.dumps(part_list))
     contents = [*media, types.Part(text=context_text(session)), types.Part(text=task)]
     return _generate(contents, ArgonLayout, "MEDIUM")
+
+
+def notes(session: dict, result: Result) -> CallResult:
+    """Call E: the engineer's notes, written from the result by a general Gemini model. Text only, no video."""
+    r = result
+    steps = [{"id": s.id, "name": s.name, "verdict": s.verdict, "mean_duration_s": s.mean_duration_s,
+              "confidence": s.confidence, "flagged_by_check": s.preflagged, "parts": s.parts,
+              "reasons": [x.text for x in s.reasons], "verifier_note": s.verifier.note if s.verifier else None}
+             for s in r.steps]
+    robot = {k: v for k, v in r.robot.model_dump().items() if k != "alternatives"}
+    pb = payback(r.roi_defaults.model_dump(), r.automated_share)
+    pb = {k: (round(v, 1) if isinstance(v, (int, float)) else v) for k, v in pb.items()}
+    station = " ".join(str(session.get("brief") or "").split())[:600] or "not described; go by the steps"
+    task = TASK_E.format(station=station, steps=json.dumps(steps, indent=1),
+                         parts=json.dumps([p.model_dump() for p in r.parts]), robot=json.dumps(robot),
+                         cycle_time_s=r.cycle_time_s, cycles=r.cycles,
+                         cycle_estimate=json.dumps(r.cycle_estimate.model_dump() if r.cycle_estimate else None),
+                         currency=r.roi_defaults.currency, payback=json.dumps(pb))
+    return _generate([types.Part(text=task)], Notes, None, model=notes_model_name())

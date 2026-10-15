@@ -30,7 +30,7 @@ def test_start_poll_done_signoff_export(make_client, stub_argon, store):
     rec = wait_done(c, aid)
     assert rec["status"] == "done" and rec["stage"] == "done", rec["error"]
     assert rec["live"] is True and rec["model"] == argon.model_name() and rec["finished_at"]
-    assert rec["usage"]["prompt_tokens"] == 3700 and rec["usage"]["output_tokens"] == 850  # three calls
+    assert rec["usage"]["prompt_tokens"] == 4500 and rec["usage"]["output_tokens"] == 1150  # four calls
     res = rec["result"]
     assert res["counts"] == {"automate": 1, "keep_human": 1, "needs_fixture": 1, "total": 3}
     assert res["automated_share"] == 0.4 and res["cycle_time_s"] == 10.0
@@ -38,6 +38,10 @@ def test_start_poll_done_signoff_export(make_client, stub_argon, store):
     assert res["robot"]["model"] == "xArm 6" and res["robot"]["needed_reach_mm"] == 526
     assert res["layout"]["bench"] == {"length_m": 1.2, "width_m": 0.6} and len(res["layout"]["anchors"]) == 4
     assert res["layout_error"] is None and res["cycle_estimate"]["speed_factor"] == 1.3
+    # the notes pass saw the assembled result and its answer is on the result, with the model that wrote it
+    assert [n["id"] for n in res["notes"]["step_notes"]] == ["s1", "s2", "s3"]
+    assert res["notes_model"] == "gemini-3.8-flash-test" and res["notes_error"] is None
+    assert stub_argon["e"][0].robot.model == "xArm 6"  # the notes pass saw the assembled result
     # all three calls got the same clips; Argon's answers are kept word for word
     assert stub_argon["a"][0] == stub_argon["d"][0] == stub_argon["c"][0]
     raw = store.read_json(argon_key(SID, aid))

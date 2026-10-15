@@ -13,6 +13,7 @@ Built by team NODAL for the AI Builder Cup 2026, Manufacturing track. All code h
    - pass D (the verifier) sees the same clips and pass A's answer, corrects timings that are off by more than one second, and flags any verdict it disagrees with. It never changes a verdict;
    - pass C (the layout) estimates a top view in metres: bench size, bins, fixtures and tools, and where each step picks and places. It is optional: if it fails the study ships without a layout and says why.
 3. **Our code** places the robot base and computes the needed reach from the layout, checks every arm in the catalogue by payload and reach and picks the smallest one that passes, estimates the robot's cycle from the step durations and a conservative speed factor, computes the payback (every input editable on the page), and records the engineer's sign-offs. Argon's raw answers are stored word for word, and each result names the model that produced it.
+4. **A second Gemini model writes the engineer's notes** (`gemini-3.8-flash` by default, text only, no video): from the steps, verdicts, robot check and payback it writes a plain summary for the owner, a recommendation per step (the gripper, the fixture, or why a step stays manual), the top risks, next steps and the questions to answer before committing. It never changes a verdict, and the page says the notes were written from the analysis, not from the video. If this pass fails the study ships without notes and says why.
 
 The bundled sample session uses synthetic test clips (a red square crossing a line) until the M1 kitting session is recorded; it is badged as such on the page.
 
@@ -36,9 +37,9 @@ node --test web\logic.test.mjs            # the page's pure logic
 .venv\Scripts\python -m capture.bridge    # the capture studio's local bridge, http://127.0.0.1:8095 (see below)
 ```
 
-Viewing the stored sample needs no credentials. A live run needs Gemini Enterprise Agent Platform access through Application Default Credentials (`gcloud auth application-default login`) and `GOOGLE_CLOUD_PROJECT`. Settings: `CELLPILOT_MODEL` (default `gemini-4-argon`), `CELLPILOT_VIDEO_FPS` (default 1), `CELLPILOT_DAILY_LIVE_RUNS` (default 10), `CELLPILOT_MAX_RUNNING` (default 1), `CELLPILOT_STORE` (a folder, or `gs://bucket` in production). `web/dev/mock_server.py` serves the page with hand-written fixture data for front-end work.
+Viewing the stored sample needs no credentials. A live run needs Gemini Enterprise Agent Platform access through Application Default Credentials (`gcloud auth application-default login`) and `GOOGLE_CLOUD_PROJECT`. Settings: `CELLPILOT_MODEL` (default `gemini-4-argon`), `CELLPILOT_NOTES_MODEL` (default `gemini-3.8-flash`), `CELLPILOT_VIDEO_FPS` (default 1), `CELLPILOT_DAILY_LIVE_RUNS` (default 10), `CELLPILOT_MAX_RUNNING` (default 1), `CELLPILOT_STORE` (a folder, or `gs://bucket` in production). `web/dev/mock_server.py` serves the page with hand-written fixture data for front-end work.
 
-To regenerate a sample's stored analysis (three paid Argon calls): `python -m app.pipeline <sid> --save-sample`.
+To regenerate a sample's stored analysis (three paid Argon calls and one notes call): `python -m app.pipeline <sid> --save-sample`.
 
 ## Capture studio
 

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 View = Literal["cam0", "cam1", "cam2"]
 Verdict = Literal["automate", "keep_human", "needs_fixture"]
 Status = Literal["queued", "running", "done", "failed"]
-Stage = Literal["queued", "steps", "verifier", "layout", "robot", "payback", "done"]
+Stage = Literal["queued", "steps", "verifier", "layout", "robot", "payback", "notes", "done"]
 Decision = Literal["approved", "flagged"]
 ObjectKind = Literal["bin", "fixture", "tool", "part_source", "part_destination", "other"]
 
@@ -141,6 +141,31 @@ class VerifyStep(BaseModel):
 
 class Verify(BaseModel):
     steps: list[VerifyStep]
+
+
+# -------------------------------------------- Gemini call E (engineer's notes)
+
+class StepNote(BaseModel):
+    id: str = Field(description="A step id from the analysis.")
+    recommendation: str = Field(description="One or two sentences on what to do about this step in the proposed cell: "
+                                "the gripper or approach for an automate step, the fixture or presenter for a "
+                                "needs_fixture step, why a keep_human step stays with the operator and what would change that.")
+    fixture: str = Field(description="For a needs_fixture step, the kind of fixture or presenter that would make it "
+                         "automatable; empty otherwise.")
+
+
+class Risk(BaseModel):
+    title: str = Field(description="A few words.")
+    detail: str = Field(description="One or two sentences: what could go wrong and how to check it before buying.")
+
+
+class Notes(BaseModel):
+    for_the_owner: str = Field(description="Three or four plain sentences for the factory owner: what the cobot would take "
+                               "over, what stays with the operator, the payback in months, and the main caveat.")
+    step_notes: list[StepNote] = Field(description="One entry per step id in the analysis, and only those ids.")
+    risks: list[Risk] = Field(description="The top three risks of the proposed cell.")
+    next_steps: list[str] = Field(description="Three to five concrete next steps for the engineer, in order.")
+    questions: list[str] = Field(description="Up to three questions the engineer must answer before committing.")
 
 
 # ------------------------------------------------------------- analysis.json
@@ -291,6 +316,9 @@ class Result(BaseModel):
     layout: Optional[Layout] = None
     layout_error: Optional[str] = None  # why the layout pass gave nothing, when it did not
     cycle_estimate: Optional[CycleEstimate] = None
+    notes: Optional[Notes] = None  # the engineer's notes, written from this result by a general Gemini model
+    notes_error: Optional[str] = None
+    notes_model: Optional[str] = None
 
 
 class Usage(BaseModel):

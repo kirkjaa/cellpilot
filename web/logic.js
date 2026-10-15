@@ -1,7 +1,7 @@
 // CellPilot page logic: pure functions, no DOM.
 // Imported by app.js in the browser and by logic.test.mjs under `node --test`.
 
-export const STAGES = ['steps', 'verifier', 'layout', 'robot', 'payback'];
+export const STAGES = ['steps', 'verifier', 'layout', 'robot', 'payback', 'notes'];
 
 export const VERDICT_LABEL = {
   automate: 'Automate',
@@ -618,4 +618,11 @@ export function cellLanes(result, factor) {
     robot_idle_pct: Math.max(0, (1 - est.robot_cycle_s / total) * 100),
     operator_idle_pct: Math.max(0, (1 - operator_s / total) * 100),
   };
+}
+
+/** The engineer's notes by step id (an empty map without notes). */
+export function notesByStep(notes) {
+  const m = new Map();
+  for (const n of notes?.step_notes || []) if (n && n.id) m.set(n.id, n);
+  return m;
 }

@@ -1,6 +1,6 @@
 """Run one analysis: queued -> steps (Argon A) -> verifier (Argon D) -> layout (Argon C)
--> robot -> payback -> done. The layout stage is optional: if it fails, the study ships
-without a layout and says why.
+-> robot -> payback -> notes (Gemini E, a general model, text only) -> done. The layout and
+notes stages are optional: if one fails, the study ships without it and says why.
 
 The API starts each run in a background thread (`start`). The same code runs
 synchronously from the command line to make a sample's stored analysis:
@@ -176,14 +176,16 @@ def build_result(graph: TaskGraph, check: Optional[Verify], estimate: Optional[A
 
 STAGE_TEXT = {"queued": "start-up", "steps": "the step analysis (Argon call A)",
               "verifier": "the verifier (Argon call D)", "layout": "the layout estimate (Argon call C)",
-              "robot": "the robot choice", "payback": "the payback figures", "done": "saving"}
+              "robot": "the robot choice", "payback": "the payback figures",
+              "notes": "the engineer's notes (Gemini call E)", "done": "saving"}
 
 
 def readable_error(stage: str, e: BaseException) -> str:
     from google.genai import errors as genai_errors
 
     if isinstance(e, genai_errors.APIError):  # the full message, with project paths, stays in the log
-        return f"Failed during {STAGE_TEXT.get(stage, stage)}: Argon answered {e.code} {e.status or ''}".rstrip()
+        who = "the notes model" if stage == "notes" else "Argon"
+        return f"Failed during {STAGE_TEXT.get(stage, stage)}: {who} answered {e.code} {e.status or ''}".rstrip()
     msg = " ".join((str(e) or "").split()) or "no details"
     creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if creds:
@@ -245,6 +247,17 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
 
         save(stage="payback")
         result = assemble(a.parsed, steps, parts, robot, layout, layout_error)
+
+        save(stage="notes")
+        try:  # optional: a general Gemini model writes the engineer's notes from the result, text only
+            e = argon.notes(session, result)
+            raw["notes"] = {"text": e.text, "usage": e.usage}
+            count(e)
+            result.notes = e.parsed
+            result.notes_model = e.usage.get("model_version") or argon.notes_model_name()
+        except Exception as e:  # noqa: BLE001
+            log.exception("analysis %s: the notes pass failed; continuing without notes", aid)
+            result.notes_error = readable_error("notes", e)
 
         save(status="done", stage="done", result=result.model_dump(), finished_at=now_iso())
         store.write_json(latest_key(sid), {"id": aid, "finished_at": rec["finished_at"]})

@@ -104,3 +104,28 @@ def test_context_carries_the_station_brief_only_when_given():
     assert with_brief.replace("Station, as described by the people who filmed it: A kitting station. Three bins.\n", "") == plain
     long = argon.context_text({"clips": clips, "brief": "x" * 2000})
     assert "x" * 600 in long and "x" * 601 not in long
+
+
+def test_notes_call_is_text_only_on_the_notes_model(samples, store, monkeypatch):
+    from app.pipeline import build_result
+    from .conftest import make_notes
+
+    monkeypatch.delenv("CELLPILOT_NOTES_MODEL", raising=False)
+    session = {**samples.session(SID), "brief": "A kitting station with three bins."}
+    result = build_result(make_graph(), make_check(), make_layout())
+    sent = []
+    monkeypatch.setattr(argon, "client", lambda: fake_client(make_notes(), sent))
+    e = argon.notes(session, result)
+    assert e.parsed.step_notes[2].fixture == "tray nest"
+    assert sent[0]["model"] == "gemini-3.8-flash"
+    assert sent[0]["config"].thinking_config is None
+    parts = sent[0]["contents"]
+    assert len(parts) == 1 and parts[0].text  # no clips: the notes are written from the result
+    text = parts[0].text
+    assert "A kitting station with three bins." in text
+    assert "never change a verdict" in text and '"s1"' in text and '"Pick bracket"' in text
+    assert '"xArm 6"' in text and "payback_months" in text and "for_the_owner" in text
+    assert "alternatives" not in text
+    monkeypatch.setenv("CELLPILOT_NOTES_MODEL", "gemini-2.5-flash")
+    argon.notes(session, result)
+    assert sent[1]["model"] == "gemini-2.5-flash"

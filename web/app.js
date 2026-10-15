@@ -6,7 +6,7 @@ import {
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -695,11 +695,12 @@ class AnalysisView {
     this.robotCard = h('section', { class: 'card robot', 'aria-labelledby': 'robot-h' });
     this.cycleCard = h('section', { class: 'card cycle-card', 'aria-labelledby': 'cycle-h' });
     this.payCard = h('section', { class: 'card payback-card', 'aria-labelledby': 'pay-h' });
+    this.notesCard = h('section', { class: 'card notes-card', 'aria-labelledby': 'notes-h' });
     this.foot = h('p', { class: 'foot' });
 
     main.replaceChildren(head, banner, this.tiles, this.vids, transport, this.driftOut, timeline, this.runStatus, this.runAnnounce,
       h('div', { class: 'cols' },
-        h('div', { class: 'main-col' }, stepsPanel, this.payCard),
+        h('div', { class: 'main-col' }, stepsPanel, this.notesCard, this.payCard),
         h('div', { class: 'side' }, this.layoutCard, this.robotCard, this.cycleCard)),
       this.foot);
 
@@ -874,6 +875,7 @@ class AnalysisView {
     this.robotCard.replaceChildren(h('h2', { id: 'robot-h' }, 'Robot'), h('p', { class: 'muted' }, 'Chosen by the analysis.'));
     this.cycleCard.replaceChildren(h('h2', { id: 'cycle-h' }, 'Cycle time'), h('p', { class: 'muted' }, 'Measured from the analysis.'));
     this.payCard.replaceChildren(h('h2', { id: 'pay-h' }, 'Payback'), h('p', { class: 'muted' }, 'Calculated from the analysis.'));
+    this.notesCard.replaceChildren(h('h2', { id: 'notes-h' }, 'Engineer’s notes'), h('p', { class: 'muted' }, 'Written from the analysis once it has run.'));
     this.foot.textContent = '';
     this.tiles.hidden = true;
     this.exportLink.hidden = true;
@@ -891,6 +893,7 @@ class AnalysisView {
     this.renderRobot();
     this.renderCycle();
     this.renderPayback();
+    this.renderNotes();
     this.renderTiles();
     this.renderFoot();
     this.exportLink.href = `${this.base()}/analyses/${encodeURIComponent(a.id)}/export`;
@@ -1022,6 +1025,7 @@ class AnalysisView {
 
   renderSteps() {
     const steps = this.analysis.result.steps || [];
+    this.notesById = notesByStep(this.analysis.result.notes);
     this.stepRows = new Map();
     this.soEls = new Map();
     this.activeStep = null;
@@ -1100,6 +1104,9 @@ class AnalysisView {
       }))
       : null;
     const vnote = s.verifier?.note ? h('p', { class: 'vnote' }, h('b', null, 'Verifier: '), s.verifier.note) : null;
+    const note = this.notesById?.get(s.id);
+    const rec = note ? h('p', { class: 'rec' }, h('b', null, 'Recommendation: '), note.recommendation,
+      note.fixture ? h('span', { class: 'muted' }, ` Fixture: ${note.fixture}.`) : null) : null;
 
     const noteIn = h('input', {
       type: 'text', class: 'so-note', maxlength: '500', placeholder: 'Note (optional)',
@@ -1118,7 +1125,7 @@ class AnalysisView {
     const row = h('li', { class: `steprow${s.preflagged ? ' pre' : ''}`, dataset: { step: s.id } },
       h('div', { class: 'top' }, title, badges),
       h('p', { class: 'meta' }, meta),
-      reasons, vnote,
+      reasons, vnote, rec,
       h('div', { class: 'signoff' }, status, h('div', { class: 'so-actions' }, noteIn, approve, flag), err));
     this.stepRows.set(s.id, row);
     this.soEls.set(s.id, { row, noteIn, approve, flag, status, err });
@@ -1370,6 +1377,29 @@ class AnalysisView {
     this.payResult.classList.toggle('none', bad || p.payback_months == null);
   }
 
+  /* ----- the engineer's notes (Gemini call E) */
+
+  renderNotes() {
+    const r = this.analysis.result;
+    const n = r.notes;
+    const head = h('h2', { id: 'notes-h' }, 'Engineer’s notes ',
+      h('span', { class: 'badge est', title: 'Written by a second model from the steps, verdicts, robot check and payback, not from the video' },
+        'written from the analysis'));
+    if (!n) {
+      this.notesCard.replaceChildren(head, h('p', { class: 'muted' }, r.notes_error || 'No notes for this result.'));
+      return;
+    }
+    const kids = [head,
+      h('p', { class: 'owner' }, n.for_the_owner),
+      n.risks?.length ? [h('h3', { class: 'sub' }, 'Risks'),
+        h('ul', { class: 'notes-list' }, n.risks.map((k) => h('li', null, h('b', null, k.title), k.detail ? ` · ${k.detail}` : '')))] : null,
+      n.next_steps?.length ? [h('h3', { class: 'sub' }, 'Next steps'), h('ol', { class: 'notes-list' }, n.next_steps.map((t) => h('li', null, t)))] : null,
+      n.questions?.length ? [h('h3', { class: 'sub' }, 'Before committing'), h('ul', { class: 'notes-list' }, n.questions.map((t) => h('li', null, t)))] : null,
+      h('p', { class: 'fine' }, `Written by ${r.notes_model || 'a second Gemini model'} from the steps, verdicts, robot check and payback above, not from the video. `
+        + 'The verdicts are the vision model’s and were not changed; each step’s recommendation is shown under that step.')];
+    this.notesCard.replaceChildren(...kids.flat(Infinity).filter(Boolean));
+  }
+
   /* ----- footer and export */
 
   renderFoot() {
@@ -1580,6 +1610,7 @@ class ReportView {
     const cur = r.roi_defaults?.currency || 'SGD';
     const clips = Array.isArray(s.clips) ? s.clips : [];
 
+    const notes = notesByStep(r.notes);
     const stepRows = (r.steps || []).map((st, i) => {
       const d = so[st.id];
       const occ = Array.isArray(st.occurrences) ? st.occurrences : [];
@@ -1587,7 +1618,9 @@ class ReportView {
         h('td', null, h('b', null, `${i + 1} · ${st.name}`),
           h('div', { class: 'small muted' }, `${occ.length} occurrence${occ.length === 1 ? '' : 's'} · mean ${fmtN(num(st.mean_duration_s), 1)} s · confidence ${fmtN(num(st.confidence))}`),
           h('ul', { class: 'reasons small' }, (st.reasons || []).map((rs) => h('li', null, rs.text, ' ', h('span', { class: 'cite' }, `${rs.view} at ${formatTime(num(rs.t_s))}`)))),
-          st.verifier?.note ? h('div', { class: 'small' }, h('b', null, 'Verifier: '), st.verifier.note) : null),
+          st.verifier?.note ? h('div', { class: 'small' }, h('b', null, 'Verifier: '), st.verifier.note) : null,
+          notes.get(st.id) ? h('div', { class: 'small' }, h('b', null, 'Recommendation: '), notes.get(st.id).recommendation,
+            notes.get(st.id).fixture ? ` Fixture: ${notes.get(st.id).fixture}.` : '') : null),
         h('td', null, verdictBadge(st.verdict), st.preflagged ? [' ', h('span', { class: 'badge pre-badge' }, 'pre-flagged')] : null,
           h('div', { class: 'small muted' }, verifierSummary(st.verifier))),
         h('td', null, d ? [h('b', { class: d.decision === 'approved' ? 'good' : 'bad' }, d.decision === 'approved' ? 'Approved' : 'Flagged'),
@@ -1652,6 +1685,13 @@ class ReportView {
               h('dt', null, 'Savings a year'), h('dd', null, formatMoney(pay.annual_savings, cur)),
               h('dt', null, 'Payback'), h('dd', null, h('b', null, pay.payback_months == null ? 'none (no savings)' : `≈ ${pay.payback_months.toFixed(1)} months`))),
             h('p', { class: 'fine' }, 'Investment = robot price × system multiple (a complete cell costs 3 to 5 × the robot: Automation World; Fraunhofer IPA). Grant: Singapore’s Productivity Solutions Grant (Enterprise Singapore); check the current terms. Edit every input on the analysis page.'))),
+        r.notes ? h('section', null, h('h2', null, 'Engineer’s notes'),
+          h('p', null, r.notes.for_the_owner),
+          h('div', { class: 'report-two' },
+            h('div', null, h('h3', { class: 'sub' }, 'Risks'), h('ul', { class: 'small' }, (r.notes.risks || []).map((k) => h('li', null, h('b', null, k.title), k.detail ? ` · ${k.detail}` : '')))),
+            h('div', null, h('h3', { class: 'sub' }, 'Next steps'), h('ol', { class: 'small' }, (r.notes.next_steps || []).map((t) => h('li', null, t))),
+              (r.notes.questions || []).length ? [h('h3', { class: 'sub' }, 'Before committing'), h('ul', { class: 'small' }, r.notes.questions.map((t) => h('li', null, t)))] : null)),
+          h('p', { class: 'fine' }, `Written by ${r.notes_model || 'a second Gemini model'} from the analysis, not from the video; the verdicts were not changed.`)) : null,
         h('footer', { class: 'report-foot' },
           `Analysis ${a.id} · model ${a.model || '?'} · ${fmtN(num(a.usage?.prompt_tokens), 0)} prompt and ${fmtN(num(a.usage?.output_tokens), 0)} output tokens · ${fmtSeconds(num(a.usage?.seconds))} · `,
           'Every verdict, time and reason comes from the model’s stored answer; the robot choice, cycle and payback arithmetic are the app’s code. ',

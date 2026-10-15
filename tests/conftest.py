@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app import argon
 from app.limits import DailyLimit
-from app.schemas import ArgonLayout, TaskGraph, Verify
+from app.schemas import ArgonLayout, Notes, TaskGraph, Verify
 from app.store import LocalStore, Samples
 
 SID = "dev-test"
@@ -106,10 +106,28 @@ def store(tmp_path: Path) -> LocalStore:
     return LocalStore(tmp_path / "data")
 
 
+def make_notes() -> Notes:
+    return Notes.model_validate({
+        "for_the_owner": "A cobot could take the bracket pick and the tray place; the screw stays with the operator. "
+                         "Payback is about two years at the default inputs. The open question is a nest for the tray.",
+        "step_notes": [
+            {"id": "s1", "recommendation": "A parallel gripper on the 80 mm faces; present brackets in a tray.", "fixture": ""},
+            {"id": "s2", "recommendation": "Stays manual: the screw needs feel to start the thread.", "fixture": ""},
+            {"id": "s3", "recommendation": "A nest that locates the tray turns this into a plain place.", "fixture": "tray nest"},
+        ],
+        "risks": [{"title": "Part presentation", "detail": "Loose brackets vary in pose; check with a tray."},
+                  {"title": "Cycle time", "detail": "The robot is slower than the operator on the pick."},
+                  {"title": "Grant terms", "detail": "Confirm the cap with the agency."}],
+        "next_steps": ["Measure the pose spread of the brackets", "Try a tray nest with a part in hand",
+                       "Ask two integrators for a quote"],
+        "questions": ["Who maintains the cell?"],
+    })
+
+
 @pytest.fixture
 def stub_argon(monkeypatch):
-    """Replace calls A, D and C; records what they were given."""
-    calls = {"a": [], "d": [], "c": []}
+    """Replace calls A, D, C and E; records what they were given."""
+    calls = {"a": [], "d": [], "c": [], "e": []}
 
     def fake_a(session, media):
         calls["a"].append(media)
@@ -129,9 +147,16 @@ def stub_argon(monkeypatch):
                                 usage={"prompt_tokens": 1200, "cached_tokens": 900, "thoughts_tokens": 50,
                                        "candidates_tokens": 150, "seconds": 0.01})
 
+    def fake_e(session, result):
+        calls["e"].append(result)
+        return argon.CallResult(parsed=make_notes(), text=make_notes().model_dump_json(),
+                                usage={"prompt_tokens": 800, "cached_tokens": 0, "thoughts_tokens": 0,
+                                       "candidates_tokens": 300, "seconds": 0.01, "model_version": "gemini-3.8-flash-test"})
+
     monkeypatch.setattr(argon, "task_graph", fake_a)
     monkeypatch.setattr(argon, "verify", fake_d)
     monkeypatch.setattr(argon, "layout", fake_c)
+    monkeypatch.setattr(argon, "notes", fake_e)
     return calls
 
 

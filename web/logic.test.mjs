@@ -7,7 +7,7 @@ import {
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -180,11 +180,11 @@ test('engineer line counts approvals over the result steps only', () => {
 });
 
 test('stage chips for a live run', () => {
-  assert.deepEqual(STAGES, ['steps', 'verifier', 'layout', 'robot', 'payback']);
-  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo', 'todo']);
-  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo', 'todo']);
-  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done', 'done']);
-  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'done', 'failed', 'todo']);
+  assert.deepEqual(STAGES, ['steps', 'verifier', 'layout', 'robot', 'payback', 'notes']);
+  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done', 'done', 'done']);
+  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'done', 'failed', 'todo', 'todo']);
 });
 
 test('formatting', () => {
@@ -490,4 +490,13 @@ test('the scenarios are complete and distinct', () => {
   assert.equal(scenarioById('kitting').name, 'Kitting station');
   assert.equal(scenarioById('nope'), null);
   assert.ok(RECORDING_RULES.length >= 3);
+});
+
+test('notesByStep indexes the recommendations by step id', () => {
+  const notes = { step_notes: [{ id: 's1', recommendation: 'Parallel gripper.', fixture: '' }, { id: 's3', recommendation: 'A nest.', fixture: 'tray nest' }, { recommendation: 'no id' }] };
+  const m = notesByStep(notes);
+  assert.equal(m.size, 2);
+  assert.equal(m.get('s3').fixture, 'tray nest');
+  assert.equal(notesByStep(null).size, 0);
+  assert.equal(notesByStep({}).size, 0);
 });

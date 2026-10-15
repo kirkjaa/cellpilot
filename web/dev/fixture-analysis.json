@@ -622,7 +622,61 @@
           "parallel_cycle_s": 2.99,
           "speed_factor": 1.3,
           "method": "Robot time = the operator's time on the automate steps x 1.3, a conservative factor for a cobot moving at collaborative speed; no robot motion was planned or simulated. Side by side = the longer of the robot's time and the operator's remaining time, the operator keeping the seconds no step covers."
-        }
+        },
+        "notes": {
+          "for_the_owner": "HAND-WRITTEN DEVELOPMENT FIXTURE. A cobot could take the pick, the turn and the place; the screws need a clamp and the scratch check stays with the operator. Payback at the default inputs is about 40 months. The clamp is the open question.",
+          "step_notes": [
+            {
+              "id": "s1",
+              "recommendation": "Fixture text: what to do about step 1.",
+              "fixture": ""
+            },
+            {
+              "id": "s2",
+              "recommendation": "Fixture text: what to do about step 2.",
+              "fixture": ""
+            },
+            {
+              "id": "s3",
+              "recommendation": "Fixture text: what to do about step 3.",
+              "fixture": "a clamp that holds the part"
+            },
+            {
+              "id": "s4",
+              "recommendation": "Fixture text: what to do about step 4.",
+              "fixture": ""
+            },
+            {
+              "id": "s5",
+              "recommendation": "Fixture text: what to do about step 5.",
+              "fixture": ""
+            }
+          ],
+          "risks": [
+            {
+              "title": "Part presentation",
+              "detail": "Fixture text: parts arrive in varying poses."
+            },
+            {
+              "title": "Clamp design",
+              "detail": "Fixture text: the clamp must free both hands."
+            },
+            {
+              "title": "Cycle time",
+              "detail": "Fixture text: the robot is slower than the operator."
+            }
+          ],
+          "next_steps": [
+            "Fixture text: measure the pose spread",
+            "Fixture text: try a clamp with a part in hand",
+            "Fixture text: ask two integrators for a quote"
+          ],
+          "questions": [
+            "Fixture text: who maintains the cell?"
+          ]
+        },
+        "notes_error": null,
+        "notes_model": "dev-fixture"
       },
       "signoffs": {}
     }

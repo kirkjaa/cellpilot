@@ -41,7 +41,21 @@ def test_layout_failure_ships_the_study_without_a_layout(make_client, stub_argon
     assert res["layout_error"].startswith("Failed during the layout estimate (Argon call C): ArgonError:")
     assert res["robot"]["needed_reach_mm"] is None and res["robot"]["reach_fits"] is None
     assert res["robot"]["model"] == "xArm 6"  # payload fit over the 700 mm floor
-    assert rec["usage"]["prompt_tokens"] == 2500  # calls A and D only were counted
+    assert rec["usage"]["prompt_tokens"] == 3300  # calls A, D and E were counted; C was not
+
+
+def test_notes_failure_ships_the_study_without_notes(make_client, stub_argon, monkeypatch):
+    def broken_e(session, result):
+        raise argon.ArgonError("Argon's answer did not match the Notes schema (2 problems).")
+
+    monkeypatch.setattr(argon, "notes", broken_e)
+    c = make_client()
+    rec = wait_done(c, c.post(f"/api/sessions/{SID}/analyses").json()["id"])
+    assert rec["status"] == "done" and rec["error"] is None, rec["error"]
+    res = rec["result"]
+    assert res["notes"] is None and res["notes_model"] is None
+    assert res["notes_error"].startswith("Failed during the engineer's notes (Gemini call E): ArgonError:")
+    assert res["layout"] is not None and res["robot"]["model"] == "xArm 6"
 
 
 def test_retry_on_429_then_success(monkeypatch):

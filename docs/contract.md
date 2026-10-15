@@ -9,6 +9,7 @@ The server (`app/`) and the page (`web/`) are built in parallel against this fil
 * Live analyses and sign-offs are JSON files in a store: a local folder in development (`CELLPILOT_STORE=./data`), a Cloud Storage bucket in production (`CELLPILOT_STORE=gs://<bucket>`).
 * Gemini 4 Argon on Gemini Enterprise Agent Platform (formerly Vertex AI): `genai.Client(enterprise=True, project=$GOOGLE_CLOUD_PROJECT, location="global")`, one long-lived client, model from `CELLPILOT_MODEL` (default `gemini-4-argon`). Credentials only from the environment.
 * Three Argon calls per analysis, all with the same clips-and-context prefix (so implicit caching applies): **A** task graph and verdicts (thinking HIGH), **D** verifier (HIGH), **C** layout estimate (MEDIUM). Call C is optional: if it fails, the run still finishes with `layout: null` and `layout_error` set.
+* One more call per analysis, **E** the engineer's notes, goes to a general Gemini model (`CELLPILOT_NOTES_MODEL`, default `gemini-3.8-flash`) with the assembled result as text and no clips; it returns `notes` (for_the_owner, step_notes, risks, next_steps, questions) and the result records `notes_model`. Optional like C: on failure `notes: null` and `notes_error` set.
 
 ## Files
 
