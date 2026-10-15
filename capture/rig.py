@@ -249,8 +249,9 @@ class Rig:
         if not self.controller.online:
             raise LinkError(f"the controller is offline ({self.controller.error or 'not connected'}): it owns the RF trigger")
         seconds = float(seconds)
-        if not MIN_SECONDS <= seconds <= MAX_SECONDS:
-            raise LinkError(f"seconds must be between {MIN_SECONDS:g} and {MAX_SECONDS:g}")
+        cap = min(MAX_SECONDS, getattr(self.cfg.console, "max_take_seconds", MAX_SECONDS) or MAX_SECONDS)
+        if not MIN_SECONDS <= seconds <= cap:
+            raise LinkError(f"seconds must be between {MIN_SECONDS:g} and {cap:g}")
         session = clean_name(name)
         clip = self._next_clip(session)
         self._counter += 1

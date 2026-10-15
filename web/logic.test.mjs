@@ -508,4 +508,6 @@ test('rigKind tells the emulator from the live rig by the camera addresses', () 
   assert.equal(rigKind([]), 'none');
   assert.equal(rigKind(undefined), 'none');
   assert.equal(rigKind([{ url: 'not a url' }]), 'live');
+  assert.equal(rigKind([], { url: 'https://m1.example' }), 'console');
+  assert.equal(rigKind([{ url: 'ws://127.0.0.1:5601' }], { url: '' }), 'emulator');
 });

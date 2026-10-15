@@ -1,0 +1,13 @@
+{
+  "_note": "The bridge inside the cloud service: a simulated M1 rig on NODAL's emulator console. The login comes from the environment (M1SIM_USER, M1SIM_PASSWORD); nothing secret lives here.",
+  "console": {
+    "url": "https://m1.ques8.com",
+    "username_env": "M1SIM_USER",
+    "password_env": "M1SIM_PASSWORD",
+    "preview_width": 640,
+    "rig": {"cameras": 3, "preset": "1080p30", "scene": "walker", "layout": "ring"}
+  },
+  "offload_dir": "/tmp/cellpilot/offload",
+  "samples_dir": "samples",
+  "preset": "1080p30"
+}

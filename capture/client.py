@@ -32,9 +32,12 @@ class LinkError(RuntimeError):
 class Link:
     def __init__(self, node_id: str, url: str, *, kind: str = "node",
                  on_event: Optional[EventHandler] = None,
-                 on_connect: Optional[Callable[["Link"], Optional[Awaitable[None]]]] = None) -> None:
+                 on_connect: Optional[Callable[["Link"], Optional[Awaitable[None]]]] = None,
+                 on_preview: Optional[Callable[["Link", PreviewFrame], Optional[Awaitable[None]]]] = None,
+                 headers: Optional[dict | Callable[[], dict]] = None) -> None:
         self.node_id, self.url, self.kind = node_id, url, kind
-        self.on_event, self.on_connect = on_event, on_connect
+        self.on_event, self.on_connect, self.on_preview = on_event, on_connect, on_preview
+        self.headers = headers  # sent on every connect: a dict, or a callable giving one (a console's login cookie)
         self.ws = None
         self.online = False
         self.error: Optional[str] = None
@@ -70,8 +73,9 @@ class Link:
         backoff = BACKOFF_MIN_S
         while True:
             try:
+                extra = self.headers() if callable(self.headers) else self.headers
                 async with connect(self.url, max_size=MAX_MESSAGE, open_timeout=OPEN_TIMEOUT_S,
-                                   ping_interval=10, ping_timeout=15) as ws:
+                                   ping_interval=10, ping_timeout=15, additional_headers=extra or None) as ws:
                     self.ws = ws
                     self.online = True
                     self.error = None
@@ -118,6 +122,11 @@ class Link:
             if self.preview_cond is not None:
                 async with self.preview_cond:
                     self.preview_cond.notify_all()
+            if self.on_preview is not None:
+                try:
+                    await _maybe_await(self.on_preview(self, frame))
+                except Exception:
+                    log.exception("%s: preview handler failed", self.node_id)
             return
         try:
             env = Envelope.from_json(raw)

@@ -71,7 +71,8 @@ def create_app(cfg: Optional[cfgmod.Config] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        rig = Rig(cfg)
+        from .console import ConsoleRig  # here so a LAN-only bridge never imports the console code
+        rig = ConsoleRig(cfg) if cfg.console else Rig(cfg)
         app.state.rig = rig
         await rig.start()
         log.info("bridge up: %d cameras, controller %s, offload %s, samples %s", len(cfg.cameras),
@@ -111,7 +112,7 @@ def create_app(cfg: Optional[cfgmod.Config] = None) -> FastAPI:
         return {"ok": True, "bridge": "cellpilot-capture", "version": VERSION, "cameras": len(r.nodes),
                 "cameras_online": sum(1 for l in r.nodes.values() if l.online),
                 "controller_online": r.controller.online, "config": str(cfg.path) if cfg.path else None,
-                "ffmpeg": convert.ffmpeg_available()}
+                "ffmpeg": convert.ffmpeg_available(), "console": getattr(r, "console_state", None)}
 
     @app.get("/api/capture/config")
     async def get_config() -> dict:

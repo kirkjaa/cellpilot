@@ -1849,6 +1849,13 @@ class CaptureView {
   }
 
   async probe() {
+    // The cloud service can carry the bridge itself (a simulated rig on the emulator console): ask it first,
+    // unless the address was pinned with ?bridge=.
+    if (!new URLSearchParams(location.search).get('bridge')) {
+      const hl = await api('/api/health');
+      if (!this.alive) return;
+      if (hl.ok && hl.data?.capture_bridge) this.bridge = `${location.origin}${hl.data.capture_bridge}`;
+    }
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 2500);
     const r = await api(`${this.base()}/health`, { signal: ctl.signal });
@@ -2058,18 +2065,25 @@ class CaptureView {
       return;
     }
     const c = r.data;
-    const kind = rigKind(c.cameras);
+    const kind = rigKind(c.cameras, c.console);
     const where = (u) => { try { const x = new URL(u); return `${x.hostname}:${x.port || '?'}`; } catch { return u; } };
-    const mode = kind === 'live' ? 'Live rig on the network' : kind === 'emulator' ? 'Emulator on this PC (all addresses are localhost)' : 'No cameras in the config';
+    const consoleHost = (() => { try { return new URL(c.console?.url || '').hostname; } catch { return c.console?.url || ''; } })();
+    const mode = kind === 'console' ? `Simulated M1 rig on NODAL’s emulator console at ${consoleHost}: three virtual cameras speaking the real camera protocol, the real controller, synthetic footage`
+      : kind === 'live' ? 'Live rig on the network' : kind === 'emulator' ? 'Emulator on this PC (all addresses are localhost)' : 'No cameras in the config';
     this.sourceBox.replaceChildren(
       h('p', { class: `mode ${kind}` }, mode),
       h('ul', { class: 'src-list' },
         h('li', null, h('b', null, 'Bridge: '), this.bridge, c.path ? ` · config ${c.path}` : ' · default config'),
-        h('li', null, h('b', null, 'Cameras: '), (c.cameras || []).length ? (c.cameras || []).map((cam) => `${cam.id} at ${where(cam.url)}`).join(' · ') : 'none'),
-        h('li', null, h('b', null, 'Controller: '), where(c.controller_url || ''), c.allow_lan ? ' · LAN addresses allowed' : ' · localhost only'),
+        kind === 'console'
+          ? h('li', null, h('b', null, 'Rig: '), `${c.console?.rig?.cameras || 3} cameras · ${c.console?.rig?.preset || c.preset || ''} · scene ${c.console?.rig?.scene || 'default'} · takes up to ${c.console?.max_take_seconds || 60} s`)
+          : h('li', null, h('b', null, 'Cameras: '), (c.cameras || []).length ? (c.cameras || []).map((cam) => `${cam.id} at ${where(cam.url)}`).join(' · ') : 'none'),
+        h('li', null, h('b', null, 'Controller: '), where(c.controller_url || ''), kind === 'console' ? ' · the console relays the cameras’ heartbeats, previews and events' : c.allow_lan ? ' · LAN addresses allowed' : ' · localhost only'),
         h('li', null, h('b', null, 'Takes land in: '), c.offload_dir || '?', ' · ', h('b', null, 'sessions go to: '), c.samples_dir || '?')),
-      h('p', { class: 'small muted' }, 'To use another rig, stop the bridge and start it on another config: ',
-        h('code', null, 'python -m capture.bridge --config <file>'), ', then reload this page. The sample study on the Studies page needs no rig.'));
+      kind === 'console'
+        ? h('p', { class: 'small muted' }, 'This is the cloud demo: the same studio that runs next to real cameras, pointed at a simulated rig so a judge can record a take. '
+          + 'Clips, sidecars and offsets come back from the console exactly as they would from the cameras. The sample study on the Studies page needs no rig.')
+        : h('p', { class: 'small muted' }, 'To use another rig, stop the bridge and start it on another config: ',
+          h('code', null, 'python -m capture.bridge --config <file>'), ', then reload this page. The sample study on the Studies page needs no rig.'));
   }
 
   setController(online) {
@@ -2095,8 +2109,10 @@ class CaptureView {
       return;
     }
     const hd = h1.data;
-    this.status.textContent = `Bridge ${this.bridge} · ${hd.cameras_online} of ${hd.cameras} cameras online · controller ${hd.controller_online ? 'online' : 'offline'}`
-      + `${hd.ffmpeg ? '' : ' · ffmpeg missing (Make session will fail)'}`;
+    const cs = hd.console;
+    this.status.textContent = `${cs ? 'Simulated rig' : `Bridge ${this.bridge}`} · ${hd.cameras_online} of ${hd.cameras} cameras online · controller ${hd.controller_online ? 'online' : 'offline'}`
+      + `${hd.ffmpeg ? '' : ' · ffmpeg missing (Make session will fail)'}`
+      + `${cs && cs.error ? ` · console: ${cs.error}` : cs && !cs.rig_running ? ' · starting the rig on the console…' : ''}`;
     if (Boolean(hd.controller_online) !== this.ctlOnline) this.setController(Boolean(hd.controller_online));
     const seen = new Set();
     for (const c of cams.data) {

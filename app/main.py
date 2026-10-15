@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,20 @@ log = logging.getLogger("cellpilot")
 INTERRUPTED = "Interrupted: the server restarted before this analysis finished."
 
 
+CAPTURE_BRIDGE_PATH = "/capture-bridge"
+
+
+def capture_bridge_app():
+    """The capture bridge mounted inside this service when CELLPILOT_CAPTURE_CONFIG names a config
+    (the cloud demo: a simulated M1 rig on NODAL's emulator console). None on a plain server."""
+    path = os.environ.get("CELLPILOT_CAPTURE_CONFIG")
+    if not path:
+        return None
+    from capture import bridge as bridgemod
+    from capture import config as capcfg
+    return bridgemod.create_app(capcfg.load(path))
+
+
 def web_dir() -> Path:
     """web/dist when the page has a build step, otherwise web/ itself (CELLPILOT_WEB_DIR overrides)."""
     if os.environ.get("CELLPILOT_WEB_DIR"):
@@ -44,9 +59,19 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
     start_lock = threading.Lock()
     max_running = int(os.environ.get("CELLPILOT_MAX_RUNNING", "1"))
     log.info("store: %s; samples: %s; daily live runs: %d", store.describe(), samples.root, limit.cap)
+    bridge_app = capture_bridge_app()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # A mounted app's own lifespan does not run by itself: enter the bridge's here so its rig connects.
+        if bridge_app is None:
+            yield
+            return
+        async with bridge_app.router.lifespan_context(bridge_app):
+            yield
 
     app = FastAPI(title="CellPilot", version="0.1.0", docs_url="/api/docs",
-                  openapi_url="/api/openapi.json", redoc_url=None)
+                  openapi_url="/api/openapi.json", redoc_url=None, lifespan=lifespan)
     app.state.store, app.state.samples, app.state.limit = store, samples, limit
     origins = [o.strip() for o in os.environ.get(
         "CELLPILOT_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -103,7 +128,10 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
 
     @app.get("/api/health")
     def health() -> dict:
-        return {"ok": True}
+        out: dict = {"ok": True}
+        if bridge_app is not None:
+            out["capture_bridge"] = CAPTURE_BRIDGE_PATH
+        return out
 
     @app.get("/api/sessions")
     def list_sessions() -> list[dict]:
@@ -189,6 +217,8 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         """Mock server, fixture and tests: left out of the image, and never served from a local web/ either."""
         raise HTTPException(404, "Not found")
 
+    if bridge_app is not None:
+        app.mount(CAPTURE_BRIDGE_PATH, bridge_app, name="capture")
     # Registered last so /api and /media win; check_dir=False lets the server start before web/ exists.
     app.mount("/", StaticFiles(directory=web_dir(), html=True, check_dir=False), name="web")
     return app

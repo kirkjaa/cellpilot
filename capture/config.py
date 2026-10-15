@@ -49,6 +49,26 @@ class Camera:
 
 
 @dataclass
+class ConsoleConfig:
+    """A rig behind NODAL's M1 emulator console: the cameras are reached through its proxied controller."""
+    url: str                                   # https://m1.ques8.com, or http://127.0.0.1:5800 for a local console
+    username: str = ""
+    password: str = field(default="", repr=False)
+    rig: dict = field(default_factory=dict)    # what to start when the user's rig is down: cameras, preset, scene
+    preview_width: int = 640
+    max_take_seconds: float = 60.0             # a public page should not tie the rig up for long
+
+    def ws_controller_url(self) -> str:
+        u = urlparse(self.url)
+        scheme = "wss" if u.scheme == "https" else "ws"
+        return f"{scheme}://{u.netloc}/ws/controller?preview={int(self.preview_width)}"
+
+    def public(self) -> dict:
+        return {"url": self.url, "username": self.username, "rig": dict(self.rig), "preview_width": self.preview_width,
+                "max_take_seconds": self.max_take_seconds}
+
+
+@dataclass
 class Config:
     cameras: list[Camera] = field(default_factory=list)
     controller_url: str = "ws://127.0.0.1:5000"
@@ -56,6 +76,7 @@ class Config:
     samples_dir: Path = ROOT / "samples"
     preset: str = "1080p30"
     allow_lan: bool = False
+    console: Optional[ConsoleConfig] = None
     path: Optional[Path] = None
 
     @property
@@ -67,6 +88,7 @@ class Config:
         return {"cameras": [{"id": c.id, "url": c.url} for c in self.cameras],
                 "controller_url": self.controller_url, "offload_dir": str(self.offload_dir),
                 "samples_dir": str(self.samples_dir), "preset": self.preset, "allow_lan": self.allow_lan,
+                "console": self.console.public() if self.console else None,
                 "path": str(self.path) if self.path else None}
 
 
@@ -92,12 +114,29 @@ def parse(d: dict, base: Path = ROOT, path: Optional[Path] = None) -> Config:
             raise ConfigError(f"camera id {cid!r} appears twice")
         seen.add(cid)
         cams.append(Camera(cid, url))
+    console = None
+    cblock = d.get("console")
+    if cblock:
+        if not isinstance(cblock, dict) or urlparse(str(cblock.get("url") or "")).scheme not in ("http", "https"):
+            raise ConfigError("console.url must start with http:// or https://")
+        username = str(cblock.get("username") or os.environ.get(str(cblock.get("username_env") or "M1SIM_USER"), ""))
+        password = str(cblock.get("password") or os.environ.get(str(cblock.get("password_env") or "M1SIM_PASSWORD"), ""))
+        rig = cblock.get("rig") if isinstance(cblock.get("rig"), dict) else {}
+        try:
+            width = int(cblock.get("preview_width", 640))
+            max_take = float(cblock.get("max_take_seconds", 60))
+        except (TypeError, ValueError):
+            raise ConfigError("console.preview_width and console.max_take_seconds must be numbers") from None
+        console = ConsoleConfig(url=str(cblock["url"]).rstrip("/"), username=username, password=password,
+                                rig=dict(rig), preview_width=width, max_take_seconds=max_take)
     ctrl = d.get("controller") or {}
     ctrl_url = str(ctrl.get("url") if isinstance(ctrl, dict) else ctrl) if ctrl else "ws://127.0.0.1:5000"
+    if console is not None:
+        ctrl_url = console.ws_controller_url()
     if urlparse(ctrl_url).scheme not in ("ws", "wss"):
         raise ConfigError("controller.url must start with ws://")
     allow_lan = bool(d.get("allow_lan", False))
-    if not allow_lan:
+    if not allow_lan and console is None:  # a console is reached over HTTPS on purpose; it is not a LAN camera
         remote = [u for u in [c.url for c in cams] + [ctrl_url] if not _is_loopback(u)]
         if remote:
             raise ConfigError("refusing non-localhost addresses while allow_lan is false: " + ", ".join(remote)
@@ -112,7 +151,8 @@ def parse(d: dict, base: Path = ROOT, path: Optional[Path] = None) -> Config:
 
     preset = str(d.get("preset") or "1080p30")
     return Config(cameras=cams, controller_url=ctrl_url, offload_dir=folder("offload_dir", ROOT / "capture_out"),
-                  samples_dir=folder("samples_dir", ROOT / "samples"), preset=preset, allow_lan=allow_lan, path=path)
+                  samples_dir=folder("samples_dir", ROOT / "samples"), preset=preset, allow_lan=allow_lan,
+                  console=console, path=path)
 
 
 def load(path: Optional[str | Path] = None) -> Config:

@@ -63,6 +63,8 @@ What the page does with a bridge running: camera cards (state, preset, battery b
 .venv\Scripts\python -m capture.convert <offload folder> samples\kitting-01 --id kitting-01 --name "Kitting station, 9 cycles" [--clip take_001] [--ref rx-cam1]
 ```
 
+**The cloud demo carries the studio too.** With `CELLPILOT_CAPTURE_CONFIG=capture/config.cloud.json` the service mounts the bridge at `/capture-bridge` and the page uses it: the rig is a simulated M1 rig on NODAL's emulator console (three virtual cameras speaking the real camera protocol, the real controller, synthetic footage), reached over HTTPS with a login from `M1SIM_USER` and `M1SIM_PASSWORD`. The console exposes only the controller, so the bridge takes the cameras' heartbeats, previews and recording events from the controller's relay and, after a take, downloads the session zip (clips, sidecars, ground truth) into the offload folder; the offset check and "Make session" then run as on a PC. Takes are capped at 60 s there. The emulator itself is NODAL's existing tool and is not part of this submission. Deploy with `.\deploy.ps1 ... -CaptureConfig capture/config.cloud.json -EnvFile <file with the two variables> -Cpu 2 -Memory 2Gi`.
+
 The whole flow is tested against the NODAL M1 emulator (three simulated cameras and the real controller on localhost): `tests/test_e2e_emulator.py`, run with `CELLPILOT_E2E_CONFIG` pointing at a bridge config for the running rig. The unit tests fake the cameras and the controller over real WebSockets.
 
 ## Deploy
