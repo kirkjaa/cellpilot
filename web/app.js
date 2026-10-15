@@ -2066,7 +2066,7 @@ class CaptureView {
     }
     const c = r.data;
     const kind = rigKind(c.cameras, c.console);
-    const where = (u) => { try { const x = new URL(u); return `${x.hostname}:${x.port || '?'}`; } catch { return u; } };
+    const where = (u) => { try { const x = new URL(u); return x.port ? `${x.hostname}:${x.port}` : x.hostname; } catch { return u; } };
     const consoleHost = (() => { try { return new URL(c.console?.url || '').hostname; } catch { return c.console?.url || ''; } })();
     const mode = kind === 'console' ? `Simulated M1 rig on NODAL’s emulator console at ${consoleHost}: three virtual cameras speaking the real camera protocol, the real controller, synthetic footage`
       : kind === 'live' ? 'Live rig on the network' : kind === 'emulator' ? 'Emulator on this PC (all addresses are localhost)' : 'No cameras in the config';

@@ -34,6 +34,8 @@ log = logging.getLogger("capture.console")
 HEARTBEAT_ONLINE_S = 4.0     # a camera is online while the controller relayed its heartbeat this recently
 RETRY_S = 10.0               # between attempts to log in and find the rig
 RIG_START_WAIT_S = 45.0      # for the console to bring a fresh rig's cameras up
+WARMUP_SECONDS = 3.0         # a first take on a freshly started rig, so a visitor's first take is never the rig's first
+WARMUP_WAIT_S = 20.0         # for the cameras to come online before the warm-up
 HTTP_TIMEOUT_S = 30.0
 DOWNLOAD_TIMEOUT_S = 300.0
 
@@ -162,6 +164,8 @@ class ConsoleRig(Rig):
         self.console_state: dict = {"url": self.console.url, "user": self.console.username, "logged_in": False,
                                     "rig_running": False, "rig": None, "error": None}
         self._boot: Optional[asyncio.Task] = None
+        self.started_rig = False      # this bridge started the rig (so it should warm it up)
+        self.warmup_task: Optional[asyncio.Task] = None
 
     # ---------------------------------------------------------------- lifecycle
 
@@ -211,6 +215,7 @@ class ConsoleRig(Rig):
         if not nodes:
             spec = dict(self.console.rig) or {"cameras": 3}
             self.http.json("POST", "/api/rig/start", spec)
+            self.started_rig = True
             deadline = time.monotonic() + RIG_START_WAIT_S
             while time.monotonic() < deadline:
                 time.sleep(2.0)
@@ -252,6 +257,21 @@ class ConsoleRig(Rig):
                                max_width=self.preview["max_width"])
             except LinkError as e:
                 log.warning("console controller: start_preview failed: %s", e)
+        if self.started_rig and self.warmup_task is None:
+            self.warmup_task = asyncio.create_task(self._warmup(), name="console-warmup")
+
+    async def _warmup(self) -> None:
+        """A freshly started emulator rig has missed a camera on its very first take (the recorder's first clip);
+        record a short take ourselves so the first take a visitor fires is not the rig's first."""
+        deadline = time.monotonic() + WARMUP_WAIT_S
+        want = len(self.nodes) or 1
+        while time.monotonic() < deadline and sum(1 for v in self.nodes.values() if v.online) < want:
+            await asyncio.sleep(0.5)
+        try:
+            take = await self.start_take("cellpilot-warmup", WARMUP_SECONDS)
+            log.info("console: warm-up take %s fired on the fresh rig", take.clip)
+        except Exception as e:  # noqa: BLE001 - a failed warm-up is only a missed precaution
+            log.warning("console: warm-up take failed: %s", e)
 
     async def _controller_event(self, link: Link, env: Envelope) -> None:
         p = env.payload or {}

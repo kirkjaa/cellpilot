@@ -269,3 +269,30 @@ def test_the_app_mounts_the_bridge_for_the_cloud_demo(fake, tmp_path, monkeypatc
     with TestClient(plain) as c:
         assert c.get("/api/health").json() == {"ok": True}
         assert c.get("/capture-bridge/api/capture/health").status_code == 404
+
+
+def test_a_rig_the_bridge_started_gets_a_warmup_take(fake, tmp_path):
+    rig = ConsoleRig(console_cfg(tmp_path, fake.url))
+    fired = []
+
+    async def fake_start_take(name, seconds):
+        fired.append((name, seconds))
+        return Take(id="w", name=name, session=name, clip="take_001", seconds=seconds)
+
+    rig.start_take = fake_start_take  # type: ignore[method-assign]
+
+    async def scenario():
+        # a rig that was already running on the console: no warm-up
+        await rig._controller_connect(rig.controller)
+        assert rig.warmup_task is None and fired == []
+        # the bridge started the rig itself: one warm-up once a camera is online
+        rig.started_rig = True
+        await rig._controller_event(rig.controller, Envelope(type=EVT_HEARTBEAT, payload={"node_id": "rx-cam1", "state": "live"}))
+        await rig._controller_connect(rig.controller)
+        assert rig.warmup_task is not None
+        await rig.warmup_task
+        assert fired == [("cellpilot-warmup", 3.0)]
+        await rig._controller_connect(rig.controller)  # a reconnect does not warm up again
+        assert len(fired) == 1
+
+    asyncio.run(scenario())
