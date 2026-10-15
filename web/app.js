@@ -6,7 +6,7 @@ import {
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -1864,7 +1864,7 @@ class CaptureView {
     document.title = 'CellPilot · Capture guide';
     main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture guide'),
       h('p', { class: 'lead muted' }, 'What CellPilot needs from the shop floor: three static cameras around one bench, started together, and 8 to 10 cycles of the real job.'),
-      h('div', { class: 'guide' }, ...GuideView.sections(),
+      h('div', { class: 'guide' }, CaptureView.ways(), ...GuideView.sections(),
         h('section', { class: 'card note', role: 'note', 'aria-label': 'Recording with the rig' },
           h('h2', null, 'Recording with the NODAL M1 rig'),
           h('p', null, 'On the PC next to the cameras this page becomes the capture studio once the small local bridge is running (',
@@ -1873,10 +1873,31 @@ class CaptureView {
             + 'which writes the folder the analysis runs on. Recorded sessions then appear under ', h('a', { href: '#/' }, 'Studies'), '.'))));
   }
 
+  /** The capture page without a bridge: how to try CellPilot with no cameras, the emulator, or the live rig. */
+  static ways() {
+    return h('section', { class: 'card note', 'aria-labelledby': 'ways-h' }, h('h2', { id: 'ways-h' }, 'Three ways to try CellPilot'),
+      h('ol', { class: 'ways' },
+        h('li', null, h('b', null, 'No cameras: '), 'open the ', h('a', { href: '#/' }, 'sample study'),
+          '. It has a stored result, and “Run it live with Gemini” analyses it again. This is what the cloud link is for.'),
+        h('li', null, h('b', null, 'The emulator, on your PC: '), 'start a simulated rig (', h('code', null, 'm1sim rig --cameras 3'),
+          '), start the bridge on its config (', h('code', null, 'python -m capture.bridge --config capture.json'),
+          ') and the page (', h('code', null, 'python -m app.main'), '). This page then becomes the capture studio, and a take gives real clips with real offsets.'),
+        h('li', null, h('b', null, 'The live rig: '), 'the same bridge with a config that lists the cameras’ addresses and ',
+          h('code', null, '"allow_lan": true'), '. The Record button needs the rig controller online. If you record with NODAL Capture instead, '
+          + 'use “Check a folder” and “Make session” in the studio.')),
+      h('p', { class: 'small muted' }, 'The studio talks to whichever rig its bridge config names. To switch rigs, restart the bridge with another config file.'));
+  }
+
   /* ----- the studio */
 
   buildStudio(health) {
     this.status = h('p', { class: 'cap-status muted small', 'aria-live': 'polite' });
+    this.ctlOnline = Boolean(health.controller_online);
+
+    // 0 · source: which rig this page is talking to
+    this.sourceBox = h('div', { class: 'source-box' }, h('p', { class: 'small muted' }, 'Reading the bridge config…'));
+    const sourceCard = h('section', { class: 'card source-card', 'aria-labelledby': 'src-h' },
+      h('h2', { id: 'src-h' }, '0 · Source'), this.sourceBox);
 
     // 1 · cameras
     this.camGrid = h('div', { class: 'cam-grid' });
@@ -1909,8 +1930,10 @@ class CaptureView {
     // 3 · take
     this.nameIn = h('input', { id: 'take-name', type: 'text', maxlength: '80', value: 'kitting', autocomplete: 'off' });
     this.secIn = h('input', { id: 'take-sec', type: 'number', inputmode: 'numeric', min: '3', max: '900', step: '1', value: '20' });
-    this.recordBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.record() }, '● Record a take');
-    this.stopBtn = h('button', { type: 'button', class: 'btn', hidden: true, onclick: () => this.stopTake() }, '■ Stop');
+    this.recordBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.record() }, '● Record 20 s');
+    this.secIn.addEventListener('input', () => this.updateRecordLabel());
+    this.stopBtn = h('button', { type: 'button', class: 'btn', disabled: true, title: 'Ends the take early; the cameras stop by themselves at the end of the take length', onclick: () => this.stopTake() }, '■ Stop');
+    this.ctlHint = h('p', { class: 'small cap-msg' });
     this.stageBox = h('div', { class: 'stages' });
     this.takeBar = h('span');
     this.takeBarWrap = h('div', { class: 'take-bar', hidden: true, role: 'progressbar', 'aria-label': 'Recording progress' }, this.takeBar);
@@ -1920,8 +1943,11 @@ class CaptureView {
       h('h2', { id: 'take-h' }, '3 · Record a take'),
       h('div', { class: 'take-form' },
         h('div', { class: 'field' }, h('label', { for: 'take-name' }, 'Name (the session folder on the cameras)'), this.nameIn),
-        h('div', { class: 'field narrow' }, h('label', { for: 'take-sec' }, 'Seconds'), this.secIn),
+        h('div', { class: 'field narrow' }, h('label', { for: 'take-sec' }, 'Take length (s)'), this.secIn),
         this.recordBtn, this.stopBtn),
+      this.ctlHint,
+      h('p', { class: 'small muted' }, 'A take runs for the length given and the cameras stop by themselves; Stop ends it early. '
+        + 'There is no pause: each camera writes one clip per take, so stop and record another.'),
       this.stageBox, this.takeBarWrap, this.takeLines, this.takeMsg,
       h('p', { class: 'fine' }, 'One click: the controller disarms and arms every camera, then sends the RF trigger. Each camera records from its first frame after the trigger and stops by itself after the seconds given. The clips stay on the cameras until offloaded; the emulator writes them straight into the offload folder.'));
 
@@ -1975,7 +2001,9 @@ class CaptureView {
     main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture studio'),
       h('p', { class: 'lead muted' }, 'Cameras online → previews → one-button take → sync check → session → analysis.'),
       this.status,
-      h('div', { class: 'cap-grid' }, camsCard, placeCard, takeCard, checkCard, sessCard));
+      h('div', { class: 'cap-grid' }, sourceCard, camsCard, placeCard, takeCard, checkCard, sessCard));
+    this.setController(this.ctlOnline);
+    this.loadSource();
 
     this.saveChecklist();
     this.loadConfig();
@@ -2020,6 +2048,43 @@ class CaptureView {
     this.checkCount.textContent = `${n} of ${CHECKLIST.length} checked${n === CHECKLIST.length ? ' · ready to record' : ''}`;
   }
 
+  /* ----- source and controller */
+
+  async loadSource() {
+    const r = await api(`${this.base()}/config`);
+    if (!this.alive) return;
+    if (!r.ok || !r.data) {
+      this.sourceBox.replaceChildren(h('p', { class: 'small error' }, `Could not read the bridge config: ${r.error || 'no answer'}`));
+      return;
+    }
+    const c = r.data;
+    const kind = rigKind(c.cameras);
+    const where = (u) => { try { const x = new URL(u); return `${x.hostname}:${x.port || '?'}`; } catch { return u; } };
+    const mode = kind === 'live' ? 'Live rig on the network' : kind === 'emulator' ? 'Emulator on this PC (all addresses are localhost)' : 'No cameras in the config';
+    this.sourceBox.replaceChildren(
+      h('p', { class: `mode ${kind}` }, mode),
+      h('ul', { class: 'src-list' },
+        h('li', null, h('b', null, 'Bridge: '), this.bridge, c.path ? ` · config ${c.path}` : ' · default config'),
+        h('li', null, h('b', null, 'Cameras: '), (c.cameras || []).length ? (c.cameras || []).map((cam) => `${cam.id} at ${where(cam.url)}`).join(' · ') : 'none'),
+        h('li', null, h('b', null, 'Controller: '), where(c.controller_url || ''), c.allow_lan ? ' · LAN addresses allowed' : ' · localhost only'),
+        h('li', null, h('b', null, 'Takes land in: '), c.offload_dir || '?', ' · ', h('b', null, 'sessions go to: '), c.samples_dir || '?')),
+      h('p', { class: 'small muted' }, 'To use another rig, stop the bridge and start it on another config: ',
+        h('code', null, 'python -m capture.bridge --config <file>'), ', then reload this page. The sample study on the Studies page needs no rig.'));
+  }
+
+  setController(online) {
+    this.ctlOnline = online;
+    const active = this.take && TAKE_ACTIVE.includes(this.take.state);
+    this.recordBtn.disabled = Boolean(active) || !online;
+    this.ctlHint.className = `small cap-msg${online ? '' : ' error'}`;
+    this.ctlHint.textContent = online ? '' : 'Controller offline: Record cannot send the RF trigger. Start the rig controller, or record with NODAL Capture and use “Check a folder” below.';
+  }
+
+  updateRecordLabel() {
+    const s = Number(this.secIn.value);
+    this.recordBtn.textContent = s >= 3 && s <= 900 ? `● Record ${s} s` : '● Record a take';
+  }
+
   /* ----- cameras */
 
   async pollCameras() {
@@ -2032,6 +2097,7 @@ class CaptureView {
     const hd = h1.data;
     this.status.textContent = `Bridge ${this.bridge} · ${hd.cameras_online} of ${hd.cameras} cameras online · controller ${hd.controller_online ? 'online' : 'offline'}`
       + `${hd.ffmpeg ? '' : ' · ffmpeg missing (Make session will fail)'}`;
+    if (Boolean(hd.controller_online) !== this.ctlOnline) this.setController(Boolean(hd.controller_online));
     const seen = new Set();
     for (const c of cams.data) {
       seen.add(c.id);
@@ -2180,8 +2246,8 @@ class CaptureView {
     this.takeBar.style.width = `${takeProgress(t, Date.now() / 1000) * 100}%`;
     this.takeLines.replaceChildren(...takeCameraLines(t).map((l) => h('li', { class: l.kind }, l.text)));
     const active = TAKE_ACTIVE.includes(t.state);
-    this.recordBtn.disabled = active;
-    this.stopBtn.hidden = !(t.state === 'armed' || t.state === 'recording');
+    this.recordBtn.disabled = active || this.ctlOnline === false;
+    this.stopBtn.disabled = !(t.state === 'armed' || t.state === 'recording');
     this.takeMsg.className = `small cap-msg${t.state === 'failed' ? ' error' : ''}`;
     if (t.state === 'failed') this.takeMsg.textContent = t.error || 'The take failed.';
     else if (t.state === 'arming') this.takeMsg.textContent = 'Arming the cameras and sending the trigger…';

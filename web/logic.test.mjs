@@ -7,7 +7,7 @@ import {
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -499,4 +499,13 @@ test('notesByStep indexes the recommendations by step id', () => {
   assert.equal(m.get('s3').fixture, 'tray nest');
   assert.equal(notesByStep(null).size, 0);
   assert.equal(notesByStep({}).size, 0);
+});
+
+test('rigKind tells the emulator from the live rig by the camera addresses', () => {
+  assert.equal(rigKind([{ url: 'ws://127.0.0.1:5601' }, { url: 'ws://localhost:5602' }]), 'emulator');
+  assert.equal(rigKind([{ url: 'ws://127.0.0.1:5601' }, { url: 'ws://192.168.1.130:5100' }]), 'live');
+  assert.equal(rigKind([{ url: 'ws://192.168.1.129:5100' }]), 'live');
+  assert.equal(rigKind([]), 'none');
+  assert.equal(rigKind(undefined), 'none');
+  assert.equal(rigKind([{ url: 'not a url' }]), 'live');
 });

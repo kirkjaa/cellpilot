@@ -626,3 +626,12 @@ export function notesByStep(notes) {
   for (const n of notes?.step_notes || []) if (n && n.id) m.set(n.id, n);
   return m;
 }
+
+/** What the bridge is wired to: 'emulator' when every camera address is localhost, 'live' otherwise, 'none' without cameras. */
+export function rigKind(cameras) {
+  const list = (cameras || []).map((c) => String(c?.url || ''));
+  if (!list.length) return 'none';
+  const host = (u) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ''; } };
+  const loopback = (hst) => hst === 'localhost' || hst === '127.0.0.1' || hst === '::1' || hst === '[::1]';
+  return list.every((u) => loopback(host(u))) ? 'emulator' : 'live';
+}
