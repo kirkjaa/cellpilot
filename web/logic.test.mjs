@@ -7,6 +7,7 @@ import {
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
+  featuredSession, summaryTiles,
 } from './logic.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -382,4 +383,55 @@ test('session id suggestion and take progress', () => {
   assert.equal(takeProgress({ state: 'stopped' }, 0), 1);
   assert.equal(takeProgress({ state: 'armed' }, 0), 0);
   assert.equal(takeProgress(null, 0), 0);
+});
+
+test('featuredSession prefers a real sample, then any sample, then anything', () => {
+  const syn = { id: 'dev', kind: 'sample', synthetic: true };
+  const real = { id: 'kit', kind: 'sample', synthetic: false };
+  const up = { id: 'u', kind: 'upload', synthetic: false };
+  assert.equal(featuredSession([syn, real]).id, 'kit');
+  assert.equal(featuredSession([syn]).id, 'dev');
+  assert.equal(featuredSession([up, syn]).id, 'dev');
+  assert.equal(featuredSession([up]).id, 'u');
+  assert.equal(featuredSession([]), null);
+  assert.equal(featuredSession(undefined), null);
+});
+
+test('summaryTiles gives the four headline results from a result', () => {
+  const result = {
+    counts: { automate: 2, keep_human: 1, needs_fixture: 0, total: 3 },
+    cycle_time_s: 10,
+    steps: [
+      { verdict: 'automate', mean_duration_s: 4 }, { verdict: 'automate', mean_duration_s: 2 },
+      { verdict: 'keep_human', mean_duration_s: 3 },
+    ],
+    robot: { model: 'xArm 6', fits: true, payload_kg: 5, reach_mm: 700 },
+    cycle_estimate: { speed_factor: 1.3 },
+    roi_defaults: ROI,
+    automated_share: 0.6,
+  };
+  const t = summaryTiles(result);
+  assert.deepEqual(t.map((x) => x.key), ['steps', 'robot', 'cycle', 'payback']);
+  assert.equal(t[0].value, '2 of 3');
+  assert.equal(t[0].kind, 'automate');
+  assert.equal(t[1].value, 'xArm 6');
+  assert.equal(t[1].detail, '5 kg payload · 700 mm reach');
+  assert.equal(t[2].value, '7.8 s'); // 6 s of automate steps × 1.3, against 3 s + 1 s left to the operator
+  assert.equal(t[2].detail, '10.0 s by hand today');
+  assert.equal(t[3].value, '≈ 32 months'); // 90,000 net over 33,600 a year
+  assert.equal(t[3].detail, 'grant SGD 30,000 applied');
+  // a slower robot and the engineer's own inputs
+  assert.equal(summaryTiles(result, { factor: 2 })[2].value, '12.0 s');
+  assert.equal(summaryTiles(result, { roi: { ...ROI, grant_share: 0 } })[3].value, '≈ 43 months');
+});
+
+test('summaryTiles degrades to dashes without a robot, a cycle or payback inputs', () => {
+  const t = summaryTiles({});
+  assert.equal(t[0].value, '0 of 0');
+  assert.equal(t[0].kind, null);
+  assert.equal(t[1].value, '–');
+  assert.equal(t[2].value, '–');
+  assert.equal(t[3].value, '–');
+  const noFit = summaryTiles({ robot: { model: 'UR3e', fits: false } });
+  assert.equal(noFit[1].kind, 'keep_human');
 });

@@ -472,3 +472,59 @@ body.printing .topbar .tagline { display: none; }
   .off-num { white-space: normal; }
   .take-form .field, .take-form .field.narrow { max-width: none; flex: 1 1 120px; }
 }
+
+/* ------------------------------------------------------------ front door */
+.hero { padding: 26px 0 8px; max-width: 860px; }
+.eyebrow { font-size: 12.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--primary); margin: 0 0 6px; }
+.hero-title { font-size: clamp(30px, 5.2vw, 46px); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 14px; text-wrap: balance; }
+.hero-lead { font-size: clamp(16.5px, 2vw, 19px); line-height: 1.5; margin: 0 0 18px; max-width: 760px; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn.big { min-height: 46px; padding: 10px 20px; font-size: 16px; border-radius: 11px; }
+.btn[aria-disabled="true"] { opacity: .6; pointer-events: none; }
+.hero-note { margin: 10px 0 0; max-width: 640px; }
+.try { margin: 4px 0 24px; max-width: 860px; border-left: 4px solid var(--primary); }
+.try h2 { margin-bottom: 6px; }
+.try-list { margin: 0; padding-left: 20px; font-size: 14.5px; display: grid; gap: 6px; }
+.list-title { font-size: 22px; margin: 8px 0 2px; }
+.list-note { margin: 0 0 10px; }
+.list-note + div .sessions { margin-top: 0; }
+.sitefoot { border-top: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--muted); }
+.sitefoot .wrap { padding-top: 14px; padding-bottom: 18px; }
+.sitefoot p { margin: 0; }
+.sitefoot a { color: inherit; }
+
+/* headline tiles under the banner */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin: -4px 0 14px; }
+.tile {
+  display: grid; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; min-width: 0;
+}
+.tile:hover { border-color: var(--primary); }
+.tile-value { font-size: 20px; font-weight: 750; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; line-height: 1.15; overflow-wrap: anywhere; }
+.tile-value.v-automate { color: var(--auto); }
+.tile-value.v-keep_human { color: var(--hum); }
+.tile-label { font-size: 13px; }
+.tile-detail { font-size: 12px; color: var(--muted); }
+.tile-detail:empty { display: none; }
+.hint { margin: 6px 0 0; }
+.card:focus { outline: none; }
+
+/* the method notes fold away; the payback shows its answer first */
+.fine-d { margin-top: 10px; font-size: 12.5px; }
+.fine-d summary, .assumptions summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.fine-d .fine { margin-top: 6px; }
+.assumptions { margin-top: 8px; }
+.assumptions .pay-foot { margin-top: 4px; }
+.payback-card .payback-result { margin: 0 0 8px; }
+
+/* two columns: steps and payback left; layout, robot and cycle right. One column, in story order, when narrow. */
+.main-col { display: grid; gap: 14px; min-width: 0; }
+@media (max-width: 900px) {
+  .cols > .main-col, .cols > .side { display: contents; }
+  .steps-panel { order: 1; }
+  .layout-card { order: 2; }
+  .robot { order: 3; }
+  .cycle-card { order: 4; }
+  .payback-card { order: 5; }
+}
+@media print { .sitefoot { display: none !important; } }

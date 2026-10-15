@@ -6,6 +6,7 @@ import {
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
+  featuredSession, summaryTiles,
 } from './logic.js';
 
 const POLL_MS = 5000;
@@ -91,7 +92,7 @@ function errorText(data, status) {
   return `The server answered HTTP ${status}.`;
 }
 
-const backLink = (href = '#/', text = '← Sessions') => h('a', { class: 'back', href }, text);
+const backLink = (href = '#/', text = '← Studies') => h('a', { class: 'back', href }, text);
 const estimateBadge = (text = 'estimated from video') => h('span', {
   class: 'badge est', title: 'An estimate by the model from the footage, not a measurement',
 }, text);
@@ -264,39 +265,61 @@ function route() {
 class SessionsView {
   constructor() {
     this.alive = true;
-    document.title = 'CellPilot · Sessions';
-    this.body = h('div', null, h('p', { class: 'muted' }, 'Loading sessions…'));
+    document.title = 'CellPilot · Studies';
+    // The front door: what CellPilot does, one button to the sample study, and what a judge can try.
+    this.openBtn = h('a', { class: 'btn primary big', href: '#/', 'aria-disabled': 'true' }, 'Open the sample study');
+    const hero = h('section', { class: 'hero', 'aria-labelledby': 'hero-h' },
+      h('p', { class: 'eyebrow' }, 'Automation feasibility study, from video'),
+      h('h1', { id: 'hero-h', class: 'hero-title' }, 'Which steps of a manual job can a robot take over?'),
+      h('p', { class: 'hero-lead' },
+        'Film a workstation with three time-aligned cameras. Gemini 4 Argon splits the job into timed steps, judges each one with evidence from the footage, and checks its own answer. ',
+        'You get the robot arm that fits, a payback figure, and a study an engineer signs off.'),
+      h('div', { class: 'hero-actions' }, this.openBtn, h('a', { class: 'btn', href: '#/guide' }, 'How the footage is captured')),
+      h('p', { class: 'small muted hero-note' }, 'No sign-in. The sample study opens with a stored result; “Run it live with Gemini” analyses it again in about a minute.'));
     const flow = h('ol', { class: 'flow', 'aria-label': 'How CellPilot works' },
-      h('li', null, h('b', null, '1 · Film'), ' three cameras around the bench, started together, while the operator works 8 to 10 cycles.'),
-      h('li', null, h('b', null, '2 · Analyse'), ' Gemini 4 Argon sees all three views at once: steps on one clock, a verdict per step with evidence, a second pass that checks it, a top-view layout.'),
-      h('li', null, h('b', null, '3 · Decide'), ' our code checks a cobot by payload and reach, estimates the cycle and the payback; the engineer approves or flags each step and prints the study.'));
+      h('li', null, h('b', null, '1 · Film'), 'Three cameras around the bench, started together, while the operator works 8 to 10 cycles. Our rig is NODAL M1; any time-aligned cameras work.'),
+      h('li', null, h('b', null, '2 · Analyse'), 'Gemini 4 Argon watches all three views at once: it lists the steps with timings, says which ones a cobot could take and why, then re-checks every step against the footage.'),
+      h('li', null, h('b', null, '3 · Decide'), 'Our code sketches the station, picks the smallest arm that fits by payload and reach, and works out the cycle and the payback. The engineer approves or flags each step and prints the study.'));
+    const tryBox = h('section', { class: 'card try', 'aria-labelledby': 'try-h' },
+      h('h2', { id: 'try-h' }, 'Try it in three clicks'),
+      h('ol', { class: 'try-list' },
+        h('li', null, h('b', null, 'Click an evidence tag'), ' under a step, such as “cam1 at 00:01.2”: all three views jump to that moment and the box the model cited is drawn on the frame.'),
+        h('li', null, h('b', null, 'Press “Run it live with Gemini”'), ' to analyse the clips again. It takes about a minute; the button shows how many of the 10 daily runs are left.'),
+        h('li', null, h('b', null, 'Approve or flag a step'), ' as the engineer, then open the printable study.')));
+    this.body = h('div', null, h('p', { class: 'muted' }, 'Loading studies…'));
     main.replaceChildren(
-      h('h1', { class: 'page-title' }, 'Sessions'),
-      h('p', { class: 'lead muted' },
-        'A session is one recording of a manual job: three MP4 clips, one per camera, and the time offset of each clip on a shared clock. Open one to see its study.'),
+      hero,
       flow,
+      tryBox,
+      h('h2', { class: 'list-title', id: 'studies-h' }, 'Studies'),
+      h('p', { class: 'small muted list-note' }, 'One study per recording: three clips, one per camera, aligned on a shared clock.'),
       this.body,
       h('section', { class: 'card byo' },
         h('h2', null, 'Bring your own footage'),
         h('p', null, 'Three static cameras, started together, all seeing the whole bench and both hands. The ',
-          h('a', { href: '#/guide' }, 'capture guide'), ' shows where to put them, how the clips are aligned, and what a session folder looks like.'),
-        h('p', { class: 'small muted' },
-          'In this build a session is added to the server by its folder (clips plus session.json) and analysed with “Run it live”. '
-          + 'Browser upload is not in this build: each clip would have to be posted on its own under Cloud Run’s 32 MiB request cap and count against the daily live-run budget, and an unrelated clip would only produce an unusable study. The README lists the design.')),
+          h('a', { href: '#/guide' }, 'capture guide'), ' shows where to put them and how the clips are aligned. ',
+          'This build has no browser upload: a study is added from the capture studio next to the rig, or from a session folder on the server.')),
     );
     this.load();
   }
 
   async load() {
-    this.body.replaceChildren(h('p', { class: 'muted' }, 'Loading sessions…'));
+    this.body.replaceChildren(h('p', { class: 'muted' }, 'Loading studies…'));
     const r = await api('/api/sessions');
     if (!this.alive) return;
     if (!r.ok || !Array.isArray(r.data)) {
       this.body.replaceChildren(errorBox(r.error || 'Unexpected answer from the server.', () => this.load()));
       return;
     }
+    const featured = featuredSession(r.data);
+    if (featured) {
+      this.openBtn.href = `#/s/${encodeURIComponent(featured.id)}`;
+      this.openBtn.removeAttribute('aria-disabled');
+    } else {
+      this.openBtn.hidden = true;
+    }
     if (!r.data.length) {
-      this.body.replaceChildren(h('p', { class: 'muted' }, 'No sessions yet.'));
+      this.body.replaceChildren(h('p', { class: 'muted' }, 'No studies yet.'));
       return;
     }
     this.body.replaceChildren(h('ul', { class: 'sessions' }, r.data.map((s) => {
@@ -304,16 +327,16 @@ class SessionsView {
       const name = s.name || s.id;
       return h('li', { class: 'card session' },
         h('div', { class: 'session-text' },
-          h('h2', { class: 'session-name' }, h('a', { href }, name)),
+          h('h3', { class: 'session-name' }, h('a', { href }, name)),
           h('p', { class: 'session-meta' },
             s.kind === 'sample' ? h('span', { class: 'badge' }, 'Sample') : null,
             s.synthetic ? syntheticBadge() : null,
             h('span', { class: 'muted' },
-              [`${s.clips ?? '?'} clips`, formatClock(num(s.duration_s)), s.id].join(' · '))),
+              [`${s.clips ?? '?'} cameras`, formatClock(num(s.duration_s)), s.id].join(' · '))),
           s.synthetic ? h('p', { class: 'small muted' },
-            'Development clips: a red square crossing a line, filmed by three synthetic cameras with real offsets. '
-            + 'They exercise every stage of the pipeline; the first kitting session recorded with the M1 rig replaces them.') : null),
-        h('a', { class: 'btn primary', href, 'aria-label': `Open ${name}` }, 'Open'));
+            'Test clips: a red square crossing a line, seen by three synthetic cameras with real time offsets. '
+            + 'They exercise every stage; the first kitting session recorded with the M1 rig replaces them.') : null),
+        h('a', { class: 'btn primary', href, 'aria-label': `Open the study ${name}` }, 'Open the study'));
     })));
   }
 
@@ -552,6 +575,8 @@ class AnalysisView {
     const banner = h('section', { class: 'banner card', 'aria-label': 'Result' },
       h('div', { class: 'banner-text' }, this.bannerMain, this.bannerSub, this.summary),
       h('div', { class: 'run-box' }, h('div', { class: 'actions' }, this.runBtn, this.reportLink, this.exportLink), this.runNote));
+    // Headline results: four tiles that scroll to their section.
+    this.tiles = h('nav', { class: 'tiles', 'aria-label': 'Headline results', hidden: true });
 
     // Three videos.
     this.figures = {};
@@ -578,7 +603,7 @@ class AnalysisView {
       this.figures[c.view] = h('figure', { class: 'vid' },
         h('div', { class: 'vid-box' }, v, this.overlays[c.view]),
         h('figcaption', null, h('b', null, c.view),
-          i === 0 ? ' · master clock' : ` · starts at cam0 ${offset.toFixed(2)} s`, note));
+          i === 0 ? ' · reference clock' : ` · starts ${offset.toFixed(2)} s after cam0`, note));
       return { el: v, view: c.view, offset };
     });
     this.vids = h('div', { class: 'vids' }, Object.values(this.figures));
@@ -626,8 +651,9 @@ class AnalysisView {
     this.scrub.addEventListener('change', () => { this.scrubbing = false; });
     const legend = h('p', { class: 'legend' },
       verdictBadge('automate'), verdictBadge('needs_fixture'), verdictBadge('keep_human'),
-      h('span', { class: 'legend-dash' }, 'dashed = verifier disputes'));
-    const timeline = h('section', { class: 'timeline', 'aria-label': 'Steps over time' }, this.track, this.scrub, legend);
+      h('span', { class: 'legend-dash' }, 'dashed = the check pass disagrees'));
+    const timeline = h('section', { class: 'timeline', 'aria-label': 'Steps over time' }, this.track, this.scrub, legend,
+      h('p', { class: 'hint small muted' }, 'Click a step on the timeline, or an evidence tag under a step, and all three views jump to that moment.'));
 
     this.runStatus = h('div', { class: 'run-status' });
     this.runAnnounce = h('p', { class: 'sr-only', role: 'status' });
@@ -651,7 +677,7 @@ class AnalysisView {
         h('dd', null, 'Evidence: click to seek all three views to that moment; the camera flashes and the box the model cited is drawn on it.')));
     const stepsPanel = h('section', { class: 'card steps-panel', 'aria-labelledby': 'steps-h' },
       h('h2', { id: 'steps-h' }, 'Steps'),
-      h('div', { class: 'engineer-field' }, h('label', { for: 'engineer' }, 'Engineer signing off'), this.engineer),
+      h('div', { class: 'engineer-field' }, h('label', { for: 'engineer' }, 'Engineer’s name, for the sign-offs'), this.engineer),
       howto,
       this.stepList);
     this.layoutCard = h('section', { class: 'card layout-card', 'aria-labelledby': 'layout-h' });
@@ -660,9 +686,10 @@ class AnalysisView {
     this.payCard = h('section', { class: 'card payback-card', 'aria-labelledby': 'pay-h' });
     this.foot = h('p', { class: 'foot' });
 
-    main.replaceChildren(head, banner, this.vids, transport, this.driftOut, timeline, this.runStatus, this.runAnnounce,
-      h('div', { class: 'cols' }, stepsPanel,
-        h('div', { class: 'side' }, this.layoutCard, this.robotCard, this.cycleCard, this.payCard)),
+    main.replaceChildren(head, banner, this.tiles, this.vids, transport, this.driftOut, timeline, this.runStatus, this.runAnnounce,
+      h('div', { class: 'cols' },
+        h('div', { class: 'main-col' }, stepsPanel, this.payCard),
+        h('div', { class: 'side' }, this.layoutCard, this.robotCard, this.cycleCard)),
       this.foot);
 
     if (videos.length) {
@@ -837,6 +864,7 @@ class AnalysisView {
     this.cycleCard.replaceChildren(h('h2', { id: 'cycle-h' }, 'Cycle time'), h('p', { class: 'muted' }, 'Measured from the analysis.'));
     this.payCard.replaceChildren(h('h2', { id: 'pay-h' }, 'Payback'), h('p', { class: 'muted' }, 'Calculated from the analysis.'));
     this.foot.textContent = '';
+    this.tiles.hidden = true;
     this.exportLink.hidden = true;
     this.reportLink.hidden = true;
     this.renderEvidence(0, true);
@@ -852,6 +880,7 @@ class AnalysisView {
     this.renderRobot();
     this.renderCycle();
     this.renderPayback();
+    this.renderTiles();
     this.renderFoot();
     this.exportLink.href = `${this.base()}/analyses/${encodeURIComponent(a.id)}/export`;
     this.exportLink.hidden = false;
@@ -864,6 +893,38 @@ class AnalysisView {
       this.deferredAnimate = animate;
       this.setBanner(r.counts);
     }
+  }
+
+  /* ----- headline tiles */
+
+  renderTiles() {
+    const r = this.analysis.result;
+    const targets = { steps: 'steps-h', robot: 'robot-h', cycle: 'cycle-h', payback: 'pay-h' };
+    this.tileEls = {};
+    this.tiles.replaceChildren(...summaryTiles(r, { factor: this.factorIn?.value }).map((t) => {
+      const value = h('b', { class: `tile-value${t.kind ? ` v-${t.kind}` : ''}` }, t.value);
+      const detail = h('span', { class: 'tile-detail' }, t.detail);
+      this.tileEls[t.key] = { value, detail };
+      return h('button', {
+        type: 'button', class: 'tile', title: 'Go to this section',
+        onclick: () => {
+          const heading = document.getElementById(targets[t.key]);
+          const card = heading?.closest('section');
+          if (!card) return;
+          card.setAttribute('tabindex', '-1');
+          card.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+          card.focus({ preventScroll: true });
+        },
+      }, value, h('span', { class: 'tile-label' }, t.label), detail);
+    }));
+    this.tiles.hidden = false;
+  }
+
+  updateTile(key, value, detail) {
+    const t = this.tileEls?.[key];
+    if (!t) return;
+    t.value.textContent = value;
+    if (detail != null) t.detail.textContent = detail;
   }
 
   clearAnimations() {
@@ -1042,7 +1103,7 @@ class AnalysisView {
     els.err.textContent = '';
     const engineer = this.engineer.value.trim();
     if (!engineer) {
-      els.err.textContent = 'Type your name in “Engineer signing off” first.';
+      els.err.textContent = 'Type your name in “Engineer’s name” first.';
       this.engineer.focus();
       return;
     }
@@ -1081,13 +1142,14 @@ class AnalysisView {
         `Top view, bench frame. Bench ${formatMetres(lay.bench?.length_m, lay.bench?.width_m)}; `,
         `${(lay.objects || []).length} object${(lay.objects || []).length === 1 ? '' : 's'}, `,
         `${(lay.anchors || []).length} pick or place point${(lay.anchors || []).length === 1 ? '' : 's'}`,
-        Number.isFinite(conf) ? `; scale confidence ${conf.toFixed(2)}` : '', '. ',
-        lay.notes ? h('span', null, lay.notes, ' ') : null));
-      body.push(h('p', { class: 'fine' },
-        'Positions and sizes are the model’s estimate from the three views, not measurements. ',
-        lay.robot_base ? `Robot base: ${lay.robot_base.rule}. ` : '',
-        lay.reach_rule ? `Needed reach: ${lay.reach_rule}. ` : '',
-        'A measured layout from a calibration board is the next step.'));
+        Number.isFinite(conf) ? `; scale confidence ${conf.toFixed(2)}` : '', '.'));
+      body.push(h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'),
+        lay.notes ? h('p', { class: 'fine' }, lay.notes) : null,
+        h('p', { class: 'fine' },
+          'Positions and sizes are the model’s estimate from the three views, not measurements. ',
+          lay.robot_base ? `Robot base: ${lay.robot_base.rule}. ` : '',
+          lay.reach_rule ? `Needed reach: ${lay.reach_rule}. ` : '',
+          'A measured layout from a calibration board is the next step.')));
     }
     this.layoutCard.replaceChildren(h('h2', { id: 'layout-h' }, 'Layout ', lay ? estimateBadge() : null), ...body.filter(Boolean));
   }
@@ -1113,10 +1175,10 @@ class AnalysisView {
       const table = robotTable(rb);
       if (table) body.push(h('h3', { class: 'sub' }, 'All arms in the catalogue'), h('div', { class: 'table-wrap' }, table));
       if (rb.why) body.push(h('details', { class: 'why-d' }, h('summary', null, 'Why this one'), h('p', { class: 'why' }, rb.why)));
-      body.push(h('p', { class: 'fine' },
+      body.push(h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'), h('p', { class: 'fine' },
         'Payload and reach are the vendors’ published figures',
         rb.source ? [' (', h('a', { href: rb.source, target: '_blank', rel: 'noopener' }, 'source'), ')'] : null,
-        '. The rule: the smallest arm that carries the heaviest automatable part plus a 1 kg gripper allowance and reaches every pick and place within 85 % of its rated reach. Price bands are indicative, not quotes.'));
+        '. The rule: the smallest arm that carries the heaviest automatable part plus a 1 kg gripper allowance and reaches every pick and place within 85 % of its rated reach. Price bands are indicative, not quotes.')));
     }
     this.robotCard.replaceChildren(h('h2', { id: 'robot-h' }, 'Robot'), ...body);
   }
@@ -1137,7 +1199,8 @@ class AnalysisView {
     body.push(h('h3', { class: 'sub' }, 'With a cobot ', estimateBadge('estimate')),
       h('div', { class: 'factor-row' }, h('label', { for: 'speed-factor' }, 'Robot speed factor (× the operator’s time)'), this.factorIn),
       this.cycleOutEl,
-      h('p', { class: 'fine' }, ce?.method || 'Robot time = the operator’s time on the automate steps × the factor; no robot motion was planned or simulated.'));
+      h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'),
+        h('p', { class: 'fine' }, ce?.method || 'Robot time = the operator’s time on the automate steps × the factor; no robot motion was planned or simulated.')));
     this.cycleCard.replaceChildren(h('h2', { id: 'cycle-h' }, 'Cycle time'), ...body);
     this.recomputeCycle();
   }
@@ -1148,6 +1211,7 @@ class AnalysisView {
     const bad = !est;
     this.factorIn?.setAttribute('aria-invalid', String(bad));
     const s = (x) => (bad ? '–' : `${x.toFixed(1)} s`);
+    if (!bad) this.updateTile('cycle', `${est.parallel_cycle_s.toFixed(1)} s`, `${est.human_cycle_s.toFixed(1)} s by hand today`);
     this.cycleOutEl?.replaceChildren(
       h('dt', null, 'Robot, its steps'), h('dd', null, bad ? '–' : `${s(est.robot_cycle_s)} (${est.automated_steps_s.toFixed(1)} s × ${est.speed_factor})`),
       h('dt', null, 'Operator, the rest'), h('dd', null, bad ? '–' : `${s(est.operator_cycle_s)}${est.unassigned_s > 0.05 ? ` + ${est.unassigned_s.toFixed(1)} s uncovered` : ''}`),
@@ -1197,8 +1261,10 @@ class AnalysisView {
       'Investment = robot price × system multiple: a complete robot cell typically costs 3 to 5 times the robot itself '
       + '(Automation World; Fraunhofer IPA). Grant: Singapore’s Productivity Solutions Grant, PSG (Enterprise Singapore); '
       + 'share and cap are editable, check the current terms. Robot price indicative.');
-    this.payCard.replaceChildren(h('h2', { id: 'pay-h' }, 'Payback'), shareLine, grid, this.payOut,
-      h('div', { class: 'pay-foot' }, this.payResult, reset), fine);
+    this.payCard.replaceChildren(h('h2', { id: 'pay-h' }, 'Payback'), this.payResult, shareLine, this.payOut,
+      h('details', { class: 'assumptions' }, h('summary', null, 'Edit the assumptions'), grid,
+        h('div', { class: 'pay-foot' }, reset)),
+      h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'), fine));
     this.recompute();
   }
 
@@ -1220,6 +1286,8 @@ class AnalysisView {
     }
     const p = computePayback(vals, this.roiShare);
     const m = (n) => (bad ? '–' : formatMoney(n, this.roiCurrency));
+    this.updateTile('payback', bad || p.payback_months == null ? '–' : `≈ ${Math.round(p.payback_months)} months`,
+      bad ? '' : `grant ${m(p.grant)} applied`);
     this.payOut.replaceChildren(
       h('dt', null, 'Investment'), h('dd', null, m(p.investment)),
       h('dt', null, 'Grant'), h('dd', null, bad ? '–' : `− ${m(p.grant)}`),
@@ -1265,9 +1333,8 @@ class AnalysisView {
       ? 'Live run in progress…'
       : this.liveLeft > 0 ? `Run it live with Gemini · ${count} left today` : 'No live runs left today';
     if (this.runNote) {
-      this.runNote.textContent = `A live run sends the three clips to Gemini 4 Argon on Gemini Enterprise Agent Platform `
-        + `and takes a few minutes. ${this.liveCap ? `Live runs are capped at ${this.liveCap} a day` : 'Live runs are capped daily'}, `
-        + `shared by every visitor, and the count resets at midnight UTC. The stored result stays on screen.`;
+      this.runNote.textContent = `Sends the three clips to Gemini 4 Argon on Gemini Enterprise Agent Platform; about a minute. `
+        + `${this.liveCap ? `${this.liveCap} live runs a day` : 'A daily cap'}, shared by all visitors. The stored result stays on screen.`;
     }
   }
 
@@ -1541,7 +1608,7 @@ class GuideView {
     return [
         h('section', { class: 'card' }, h('h2', null, '1 · Where the cameras go'), h('div', { class: 'guide-pic' }, GuideView.placement()),
           h('ul', null,
-            h('li', null, h('b', null, 'cam0'), ' faces the operator from across the bench, about 1.5 to 2 m away and 1.6 to 1.8 m high, tilted down: it sees the hands, the parts and the bins. It is the master clock.'),
+            h('li', null, h('b', null, 'cam0'), ' faces the operator from across the bench, about 1.5 to 2 m away and 1.6 to 1.8 m high, tilted down: it sees the hands, the parts and the bins. It is the reference clock: every time in the study is a cam0 time.'),
             h('li', null, h('b', null, 'cam1'), ' and ', h('b', null, 'cam2'), ' stand to the left and right, roughly 45° off cam0, at the same distance. Three views from different sides let the verifier check each step and let the model place objects on the bench.'),
             h('li', null, 'Every camera must see the whole bench top and both hands all the time. Nothing between a camera and the bench; no one walking through.'),
             h('li', null, 'Fix each camera on a tripod or a clamp. A camera that moves breaks the layout estimate.'))),
@@ -1594,7 +1661,7 @@ class GuideView {
       svg('rect', { class: 'binr', x: 236, y: 212, width: 52, height: 40, rx: 6 }), svg('text', { x: 262, y: 237, 'text-anchor': 'middle', class: 'lbl small' }, 'bins'),
       svg('rect', { class: 'binr', x: 432, y: 212, width: 52, height: 40, rx: 6 }), svg('text', { x: 458, y: 237, 'text-anchor': 'middle', class: 'lbl small' }, 'tray'),
       svg('g', { class: 'operator' }, svg('circle', { cx: 360, cy: 360, r: 30 }), svg('text', { x: 360, y: 365, 'text-anchor': 'middle', class: 'lbl' }, 'operator')),
-      cam(360, 60, 'cam0', 'master clock · across the bench, high'),
+      cam(360, 60, 'cam0', 'reference clock · across the bench, high'),
       cam(110, 150, 'cam1', '45° left'),
       cam(610, 150, 'cam2', '45° right'),
       svg('path', { class: 'dim', d: 'M360,95 L360,195' }), svg('text', { x: 372, y: 150, class: 'lbl small' }, '1.5–2 m'),
@@ -1667,14 +1734,16 @@ class CaptureView {
   /* ----- no bridge: the guide, labelled */
 
   buildFallback() {
-    main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture studio'),
-      h('section', { class: 'card note', role: 'note', 'aria-label': 'Where the capture studio runs' },
-        h('h2', null, 'Capture studio runs on the PC next to the rig'),
-        h('p', null, 'On that PC a small bridge (', h('code', null, 'python -m capture.bridge'), ', localhost:8095) speaks to the three NODAL M1 cameras and the rig controller. '
-          + 'This page then shows the cameras online with battery and live previews, a placement checklist, a one-button take (arm, RF trigger, record, stop), '
-          + 'the sync check read from the cameras’ sidecars, and “Make session”, which writes the folder the analysis runs on.'),
-        h('p', { class: 'small muted' }, 'No bridge answered from this browser, which is expected on the cloud link. Below is the capture guide the studio follows; sessions recorded with it appear on the ', h('a', { href: '#/' }, 'sessions page'), '.')),
-      h('div', { class: 'guide' }, ...GuideView.sections()));
+    document.title = 'CellPilot · Capture guide';
+    main.replaceChildren(backLink(), h('h1', { class: 'page-title' }, 'Capture guide'),
+      h('p', { class: 'lead muted' }, 'What CellPilot needs from the shop floor: three static cameras around one bench, started together, and 8 to 10 cycles of the real job.'),
+      h('div', { class: 'guide' }, ...GuideView.sections(),
+        h('section', { class: 'card note', role: 'note', 'aria-label': 'Recording with the rig' },
+          h('h2', null, 'Recording with the NODAL M1 rig'),
+          h('p', null, 'On the PC next to the cameras this page becomes the capture studio once the small local bridge is running (',
+            h('code', null, 'python -m capture.bridge'), '): the cameras online with battery and live previews, a placement checklist, '
+            + 'a one-button take (arm, RF trigger, record, stop), the sync check read from the cameras’ sidecars, and “Make session”, '
+            + 'which writes the folder the analysis runs on. Recorded sessions then appear under ', h('a', { href: '#/' }, 'Studies'), '.'))));
   }
 
   /* ----- the studio */

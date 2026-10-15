@@ -512,3 +512,58 @@ export function takeProgress(take, nowS) {
   const elapsed = nowS - Number(take.started_at);
   return Math.max(0, Math.min(1, elapsed / Number(take.seconds)));
 }
+
+/* ------------------------------------------------------------- front door */
+
+/** The study the landing page opens first: a real sample before a synthetic one, then anything. */
+export function featuredSession(sessions) {
+  const list = Array.isArray(sessions) ? sessions : [];
+  return list.find((s) => s.kind === 'sample' && !s.synthetic)
+    || list.find((s) => s.kind === 'sample')
+    || list.find((s) => !s.synthetic)
+    || list[0] || null;
+}
+
+/**
+ * The four headline results of a study, for the tiles under the banner: the steps a cobot could
+ * take, the arm that fits, the robot cycle, and the payback. `factor` overrides the speed factor
+ * and `roi` the payback inputs; both default to the result's own values.
+ */
+export function summaryTiles(result, { factor, roi } = {}) {
+  const r = result || {};
+  const c = normCounts(r.counts);
+  const tiles = [{
+    key: 'steps',
+    kind: c.automate > 0 ? 'automate' : (c.total ? 'keep_human' : null),
+    value: `${c.automate} of ${c.total}`,
+    label: c.total === 1 ? 'step a cobot could take' : 'steps a cobot could take',
+    detail: `${c.needs_fixture} with a fixture · ${c.keep_human} stay human`,
+  }];
+  const rb = r.robot;
+  if (rb && rb.model) {
+    const spec = [
+      Number.isFinite(Number(rb.payload_kg)) ? `${rb.payload_kg} kg payload` : null,
+      Number.isFinite(Number(rb.reach_mm)) ? `${rb.reach_mm} mm reach` : null,
+    ].filter(Boolean).join(' · ');
+    tiles.push({
+      key: 'robot', kind: rb.fits === false ? 'keep_human' : 'automate', value: rb.model,
+      label: rb.fits === false ? 'closest arm, but it does not fit' : 'smallest arm that fits', detail: spec,
+    });
+  } else {
+    tiles.push({ key: 'robot', kind: null, value: '–', label: 'no arm chosen', detail: '' });
+  }
+  const f0 = Number(r.cycle_estimate?.speed_factor);
+  const f = Number.isFinite(Number(factor)) && Number(factor) > 0 ? Number(factor) : (Number.isFinite(f0) ? f0 : 1.3);
+  const cy = robotCycle(r, f);
+  tiles.push(cy ? {
+    key: 'cycle', kind: null, value: `${cy.parallel_cycle_s.toFixed(1)} s`,
+    label: 'cycle with a cobot, estimated', detail: `${cy.human_cycle_s.toFixed(1)} s by hand today`,
+  } : { key: 'cycle', kind: null, value: '–', label: 'no measured cycle', detail: '' });
+  const inputs = roi || r.roi_defaults;
+  const p = inputs ? computePayback(inputs, automatedShare(r)) : null;
+  tiles.push(p && p.payback_months != null ? {
+    key: 'payback', kind: 'automate', value: `≈ ${Math.round(p.payback_months)} months`,
+    label: 'payback at the default inputs', detail: `grant ${formatMoney(p.grant, inputs.currency || 'SGD')} applied`,
+  } : { key: 'payback', kind: null, value: '–', label: 'no payback figure', detail: '' });
+  return tiles;
+}

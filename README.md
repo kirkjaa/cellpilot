@@ -3,7 +3,7 @@
 Which steps of a manual job could a cobot take over? Film a workstation with three time-aligned cameras, and CellPilot returns a feasibility study for an engineer to review: the steps with timings, a verdict on each step with evidence drawn on the footage, a self-check across the three views, a top-view layout of the station, a cobot checked by payload and reach against a six-arm catalogue, a cycle-time and payback estimate, and a printable study. The engineer approves or flags every step.
 
 Built by team NODAL for the AI Builder Cup 2026, Manufacturing track. All code here was written during the hackathon.
-**Live:** https://cellpilot-462384168489.asia-southeast1.run.app (Cloud Run, Singapore). Open the sample session; no sign-in needed. "Run it live with Gemini" re-analyses it; live runs are capped at 10 a day for all visitors, and the button shows how many are left.
+**Live:** https://cellpilot-462384168489.asia-southeast1.run.app (Cloud Run, Singapore). Open the sample study; no sign-in needed. "Run it live with Gemini" re-analyses it; live runs are capped at 10 a day for all visitors, and the button shows how many are left.
 
 ## How it works
 
