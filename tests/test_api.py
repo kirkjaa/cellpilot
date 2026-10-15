@@ -16,7 +16,7 @@ def test_health_and_sessions(make_client):
     body = c.get(f"/api/sessions/{SID}").json()
     assert body["clip_urls"] == {v: f"/media/{SID}/{v}.mp4" for v in ("cam0", "cam1", "cam2")}
     assert body["session"]["clips"][1]["offset_s"] == 0.2
-    assert body["latest"] is None and body["live_runs_left"] == 10
+    assert body["latest"] is None and body["live_runs_left"] == 10 and body["live_runs_per_day"] == 10
     assert c.get("/api/sessions/nope").status_code == 404
 
 

@@ -199,7 +199,7 @@ class Handler(BaseHTTPRequestHandler):
                     "session": s,
                     "clip_urls": {c["view"]: f"/media/{sid}/{c['file']}" for c in s["clips"]},
                     "latest": st.latest(sid),
-                    "live_runs_left": st.runs_left,
+                    "live_runs_left": st.runs_left, "live_runs_per_day": 10,
                 })
             if rest == ["analyses"] and method == "POST":
                 self.read_body()

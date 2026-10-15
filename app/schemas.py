@@ -1,6 +1,6 @@
 """Pydantic models: the contract shapes (docs/contract.md) and the Argon response schemas.
 
-The Argon schemas carry no defaults or numeric bounds: Vertex turns them into a
+The Argon schemas carry no defaults or numeric bounds: Agent Platform turns them into a
 response schema, and out-of-range values are clamped by the pipeline instead of
 failing validation. Result-side models added after the first build carry defaults
 so the stored sample and older live results still load.

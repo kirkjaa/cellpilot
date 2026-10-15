@@ -7,7 +7,7 @@ The server (`app/`) and the page (`web/`) are built in parallel against this fil
 * One Cloud Run service (FastAPI). It serves the page from `web/`, the API under `/api/`, and runs each analysis in a background thread (deploy with `--no-cpu-throttling --max-instances 1`).
 * Sample sessions ship inside the image under `samples/<sid>/`, with their clips and a stored analysis, so judges get an instant result at no cost.
 * Live analyses and sign-offs are JSON files in a store: a local folder in development (`CELLPILOT_STORE=./data`), a Cloud Storage bucket in production (`CELLPILOT_STORE=gs://<bucket>`).
-* Gemini 4 Argon on Vertex AI: `genai.Client(enterprise=True, project=$GOOGLE_CLOUD_PROJECT, location="global")`, one long-lived client, model from `CELLPILOT_MODEL` (default `gemini-4-argon`). Credentials only from the environment.
+* Gemini 4 Argon on Gemini Enterprise Agent Platform (formerly Vertex AI): `genai.Client(enterprise=True, project=$GOOGLE_CLOUD_PROJECT, location="global")`, one long-lived client, model from `CELLPILOT_MODEL` (default `gemini-4-argon`). Credentials only from the environment.
 * Three Argon calls per analysis, all with the same clips-and-context prefix (so implicit caching applies): **A** task graph and verdicts (thinking HIGH), **D** verifier (HIGH), **C** layout estimate (MEDIUM). Call C is optional: if it fails, the run still finishes with `layout: null` and `layout_error` set.
 
 ## Files

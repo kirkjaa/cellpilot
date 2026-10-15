@@ -509,6 +509,7 @@ class AnalysisView {
     this.session = r.data.session;
     this.clipUrls = r.data.clip_urls || {};
     this.liveLeft = Math.max(0, Number(r.data.live_runs_left) || 0);
+    this.liveCap = Math.max(0, Number(r.data.live_runs_per_day) || 0);
     this.build();
     const latest = r.data.latest;
     if (latest) this.showAnalysis(latest, { animate: true });
@@ -545,11 +546,12 @@ class AnalysisView {
     this.bannerSub = h('p', { class: 'banner-sub', 'aria-live': 'polite' });
     this.summary = h('p', { class: 'summary' });
     this.runBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.startRun() });
+    this.runNote = h('p', { class: 'run-note small muted' });
     this.reportLink = h('a', { class: 'btn', hidden: true, title: 'A one-page study to print or save as PDF' }, 'Printable study');
     this.exportLink = h('a', { class: 'btn', download: '', hidden: true, title: 'The result and the sign-offs as JSON' }, 'Export JSON');
     const banner = h('section', { class: 'banner card', 'aria-label': 'Result' },
       h('div', { class: 'banner-text' }, this.bannerMain, this.bannerSub, this.summary),
-      h('div', { class: 'actions' }, this.runBtn, this.reportLink, this.exportLink));
+      h('div', { class: 'run-box' }, h('div', { class: 'actions' }, this.runBtn, this.reportLink, this.exportLink), this.runNote));
 
     // Three videos.
     this.figures = {};
@@ -1258,9 +1260,15 @@ class AnalysisView {
     if (!this.runBtn) return;
     const running = Boolean(this.run);
     this.runBtn.disabled = running || this.liveLeft <= 0;
+    const count = this.liveCap ? `${this.liveLeft} of ${this.liveCap}` : `${this.liveLeft}`;
     this.runBtn.textContent = running
       ? 'Live run in progress…'
-      : this.liveLeft > 0 ? `Run it live · ${this.liveLeft} left today` : 'No live runs left today';
+      : this.liveLeft > 0 ? `Run it live with Gemini · ${count} left today` : 'No live runs left today';
+    if (this.runNote) {
+      this.runNote.textContent = `A live run sends the three clips to Gemini 4 Argon on Gemini Enterprise Agent Platform `
+        + `and takes a few minutes. ${this.liveCap ? `Live runs are capped at ${this.liveCap} a day` : 'Live runs are capped daily'}, `
+        + `shared by every visitor, and the count resets at midnight UTC. The stored result stays on screen.`;
+    }
   }
 
   setRunStatus(...nodes) { this.runStatus.replaceChildren(...nodes.flat().filter((n) => n != null && n !== false)); }

@@ -1,4 +1,4 @@
-"""Spike 1: reach gemini-4-argon on Vertex AI and measure it.
+"""Spike 1: reach gemini-4-argon on Gemini Enterprise Agent Platform and measure it.
 
     python spikes/argon_smoke.py text    # access + structured output
     python spikes/argon_smoke.py video   # three synced clips + offsets in one request

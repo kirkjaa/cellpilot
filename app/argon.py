@@ -1,4 +1,4 @@
-"""Gemini 4 Argon on Vertex AI: one long-lived client and the three calls.
+"""Gemini 4 Argon on Gemini Enterprise Agent Platform (formerly Vertex AI): one long-lived client and the three calls.
 
 Call A (steps):    the three clips, then the shared context, then the task -> TaskGraph
 Call D (verifier): the same clips and context, identically, then A's JSON -> Verify
@@ -6,7 +6,7 @@ Call C (layout):   the same clips and context, then the verified steps -> ArgonL
                    (a top-view estimate in metres; optional, the study ships without it)
 
 The clips and the context text come first and identically in every call, so
-Vertex's implicit caching can reuse that prefix. Credentials come only from the
+Agent Platform's implicit caching can reuse that prefix. Credentials come only from the
 environment (GOOGLE_APPLICATION_CREDENTIALS or the Cloud Run service account).
 """
 from __future__ import annotations
@@ -31,7 +31,7 @@ from .store import Store
 log = logging.getLogger("cellpilot.argon")
 
 INLINE_LIMIT_BYTES = 15 * 1024 * 1024
-CALL_TIMEOUT_MS = 20 * 60 * 1000  # Vertex caps a request at 20 minutes
+CALL_TIMEOUT_MS = 20 * 60 * 1000  # Agent Platform caps a request at 20 minutes
 RETRY_CODES = {429, 503}  # rejected before any generation: not billed
 
 _client: Optional[genai.Client] = None

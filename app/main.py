@@ -120,7 +120,7 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         session = session_or_404(sid)
         return {"session": session,
                 "clip_urls": {c["view"]: f"/media/{sid}/{c['file']}" for c in session["clips"]},
-                "latest": latest(sid), "live_runs_left": limit.left()}
+                "latest": latest(sid), "live_runs_left": limit.left(), "live_runs_per_day": limit.cap}
 
     @app.post("/api/sessions/{sid}/analyses", status_code=202)
     def start_analysis(sid: str):

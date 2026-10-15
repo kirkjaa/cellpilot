@@ -23,7 +23,7 @@ CellPilot's own code is Apache-2.0. It uses these components under their own lic
 
 ## Services
 
-Gemini 4 Argon on Vertex AI and Cloud Run are Google Cloud services used under the Google Cloud terms. They are not redistributed here.
+Gemini 4 Argon on Gemini Enterprise Agent Platform and Cloud Run are Google Cloud services used under the Google Cloud terms. They are not redistributed here.
 
 ## Browser
 

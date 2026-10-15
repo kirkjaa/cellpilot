@@ -138,6 +138,8 @@ p.error { margin: 8px 0 0; }
 .banner-sub { font-weight: 650; margin: 0 0 6px; font-variant-numeric: tabular-nums; }
 .summary { color: var(--muted); font-size: 14.5px; margin: 0; max-width: 820px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.run-box { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 0 1 380px; }
+.run-note { margin: 0; max-width: 46ch; }
 
 .vids { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .vid { margin: 0; min-width: 0; border-radius: 10px; overflow: hidden; background: var(--video); position: relative; }

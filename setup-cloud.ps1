@@ -18,7 +18,7 @@ if ($env:GOOGLE_APPLICATION_CREDENTIALS) {
 gcloud config set project $Project --quiet
 gcloud config set run/region $Region --quiet
 
-# APIs the service needs: Cloud Run and its source builds, the bucket, and Vertex AI for Argon.
+# APIs the service needs: Cloud Run and its source builds, the bucket, and Gemini Enterprise Agent Platform (aiplatform) for Argon.
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com `
     storage.googleapis.com aiplatform.googleapis.com --quiet
 
