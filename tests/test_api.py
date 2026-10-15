@@ -12,7 +12,7 @@ def test_health_and_sessions(make_client):
     c = make_client()
     assert c.get("/api/health").json() == {"ok": True}
     assert c.get("/api/sessions").json() == [
-        {"id": SID, "name": "Test session", "kind": "sample", "synthetic": True, "clips": 3, "duration_s": 30.0}]
+        {"id": SID, "name": "Test session", "kind": "sample", "synthetic": True, "scenario": "", "clips": 3, "duration_s": 30.0}]
     body = c.get(f"/api/sessions/{SID}").json()
     assert body["clip_urls"] == {v: f"/media/{SID}/{v}.mp4" for v in ("cam0", "cam1", "cam2")}
     assert body["session"]["clips"][1]["offset_s"] == 0.2

@@ -419,12 +419,13 @@ class Rig:
     # ---------------------------------------------------------------- make session
 
     def start_job(self, folder: Path, clip: Optional[str], sid: str, name: str, ref: Optional[str],
-                  overwrite: bool, take_id: Optional[str] = None) -> dict:
+                  overwrite: bool, take_id: Optional[str] = None, scenario: str = "", brief: str = "") -> dict:
         out_dir = self.cfg.samples_dir / sid
         if (out_dir / "session.json").exists() and not overwrite:
             raise convert.ConvertError(f"session {sid!r} already exists under {self.cfg.samples_dir}; choose another id")
         job = {"id": f"j-{uuid.uuid4().hex[:8]}", "status": "queued", "sid": sid, "name": name, "folder": str(folder),
-               "clip": clip, "take_id": take_id, "out_dir": str(out_dir), "error": None, "log": [], "session": None,
+               "clip": clip, "take_id": take_id, "scenario": scenario, "brief": brief,
+               "out_dir": str(out_dir), "error": None, "log": [], "session": None,
                "url": f"#/s/{sid}", "started_at": time.time(), "finished_at": None}
         self.jobs[job["id"]] = job
         asyncio.create_task(self._run_job(job, folder, clip, ref), name=f"job-{job['id']}")
@@ -435,6 +436,7 @@ class Rig:
         try:
             session = await asyncio.to_thread(
                 convert.make_session, folder, Path(job["out_dir"]), job["sid"], job["name"], clip=clip, ref=ref,
+                scenario=job.get("scenario", ""), brief=job.get("brief", ""),
                 progress=lambda msg: job["log"].append(msg))
             job["session"], job["status"] = session, "done"
         except convert.ConvertError as e:

@@ -76,6 +76,7 @@ def encode(src: Path, dst: Path, fps: float, trim_start: float = 0.0, trim_end: 
 def make_session(session_dir: Path, out_dir: Path, sid: str, name: str, *, clip: Optional[str] = None,
                  ref: Optional[str] = None, recorded: Optional[str] = None, trim_start: float = 0.0,
                  trim_end: float = 0.0, height: int = 720, synthetic: bool = False,
+                 scenario: str = "", brief: str = "",
                  progress: Optional[Callable[[str], None]] = None) -> dict:
     """Write <out_dir>/{cam0,cam1,cam2}.mp4 + session.json + sources.json; return the session."""
     say = progress or (lambda _msg: None)
@@ -118,7 +119,8 @@ def make_session(session_dir: Path, out_dir: Path, sid: str, name: str, *, clip:
         sources[view] = {"node_id": node, "sidecar": str(sidecars[node]), "delay_ns": check.delays_ns[node]}
 
     session = {"id": sid, "name": name.strip(), "kind": "sample",
-               "recorded": recorded or dt.date.today().isoformat(), "synthetic": synthetic, "clips": clips}
+               "recorded": recorded or dt.date.today().isoformat(), "synthetic": synthetic,
+               "scenario": (scenario or "").strip(), "brief": " ".join((brief or "").split())[:600], "clips": clips}
     (out_dir / "session.json").write_text(json.dumps(session, indent=2) + "\n", encoding="utf-8")
     (out_dir / "sources.json").write_text(json.dumps({"clip": clip, "offload_dir": str(session_dir),
                                                       "check": check.to_dict(), "cameras": sources},
@@ -136,14 +138,16 @@ def main(argv: Optional[list[str]] = None) -> None:
     ap.add_argument("--clip", help="clip name when the folder holds several takes")
     ap.add_argument("--ref", help="node id to use as cam0 (default: the earliest-starting camera)")
     ap.add_argument("--recorded", default=None, help="YYYY-MM-DD (default: today)")
+    ap.add_argument("--scenario", default="", help="job id from the capture guide, e.g. kitting")
+    ap.add_argument("--brief", default="", help="one or two sentences on the station, given to the model as context")
     ap.add_argument("--trim-start", type=float, default=0.0, help="seconds to drop from the start of every clip")
     ap.add_argument("--trim-end", type=float, default=0.0, help="seconds to drop from the end of every clip")
     ap.add_argument("--height", type=int, default=720)
     a = ap.parse_args(argv)
     try:
         session = make_session(a.session_dir, a.out_dir, a.id, a.name, clip=a.clip, ref=a.ref,
-                               recorded=a.recorded, trim_start=a.trim_start, trim_end=a.trim_end,
-                               height=a.height, progress=print)
+                               recorded=a.recorded, trim_start=a.trim_start, trim_end=a.trim_end, height=a.height,
+                               scenario=a.scenario, brief=a.brief, progress=print)
     except ConvertError as e:
         sys.exit(f"error: {e}")
     for c in session["clips"]:

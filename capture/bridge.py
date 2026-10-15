@@ -62,6 +62,8 @@ class SessionIn(BaseModel):
     clip: Optional[str] = None
     ref: Optional[str] = None
     overwrite: bool = False
+    scenario: str = Field("", pattern=r"^[a-z0-9-]{0,40}$")
+    brief: str = Field("", max_length=600)
 
 
 def create_app(cfg: Optional[cfgmod.Config] = None) -> FastAPI:
@@ -253,7 +255,8 @@ def create_app(cfg: Optional[cfgmod.Config] = None) -> FastAPI:
         else:
             raise HTTPException(422, "give a take_id or a folder")
         try:
-            job = r.start_job(folder, clip, body.sid, body.name, body.ref, body.overwrite, body.take_id)
+            job = r.start_job(folder, clip, body.sid, body.name, body.ref, body.overwrite, body.take_id,
+                              scenario=body.scenario, brief=body.brief)
         except convert.ConvertError as e:
             raise HTTPException(409, str(e)) from None
         return job

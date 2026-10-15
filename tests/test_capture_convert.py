@@ -101,3 +101,15 @@ def test_cli_converts_a_folder(take_dir: Path, tmp_path: Path, capsys):
     assert (out / "session.json").is_file() and shutil.which("ffmpeg")
     printed = capsys.readouterr().out
     assert "cam2: offset +0.0299 s" in printed
+
+
+def test_make_session_records_the_job_and_the_brief(take_dir: Path, tmp_path: Path):
+    out = tmp_path / "s4"
+    session = convert.make_session(take_dir, out, "s4", "Kitting", scenario="kitting",
+                                   brief="A kitting station.  Three bins,\n one tray.")
+    assert session["scenario"] == "kitting"
+    assert session["brief"] == "A kitting station. Three bins, one tray."
+    on_disk = json.loads((out / "session.json").read_text(encoding="utf-8"))
+    assert on_disk["scenario"] == "kitting" and on_disk["brief"] == session["brief"]
+    plain = convert.make_session(take_dir, tmp_path / "s5", "s5", "Plain")
+    assert plain["scenario"] == "" and plain["brief"] == ""

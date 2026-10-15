@@ -100,13 +100,15 @@ def context_text(session: dict) -> str:
     """Shared by calls A and D, word for word, right after the clips."""
     cams = [{"view": c["view"], "offset_s": c["offset_s"], "duration_s": c["duration_s"]}
             for c in sorted(session["clips"], key=lambda c: c["view"])]
+    brief = " ".join(str(session.get("brief") or "").split())[:600]
     return (
         "Three synchronized cameras filmed the same manual workstation. The videos above are, "
         "in order: " + ", ".join(c["view"] for c in cams) + ".\n"
         "Time base: cam0 is the reference. A camera's offset_s is the cam0 time at which its clip "
         "starts, so a moment at time t in that camera's own clip is at cam0 time t + offset_s.\n"
         "Cameras: " + json.dumps(cams) + "\n"
-        "Robot catalogue (6-axis cobots, each fitted with a two-finger parallel gripper): "
+        + (f"Station, as described by the people who filmed it: {brief}\n" if brief else "")
+        + "Robot catalogue (6-axis cobots, each fitted with a two-finger parallel gripper): "
         + json.dumps(public_catalogue()) + "\n"
     )
 

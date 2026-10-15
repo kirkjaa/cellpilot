@@ -6,8 +6,9 @@ import {
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
-  featuredSession, summaryTiles,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes,
 } from './logic.js';
+import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
 const POLL_MS = 5000;
 const DROP_MS = 400;
@@ -99,6 +100,8 @@ const estimateBadge = (text = 'estimated from video') => h('span', {
 const errorBox = (msg, retry) => h('div', { class: 'error', role: 'alert' },
   h('p', null, msg), retry ? h('button', { type: 'button', class: 'btn', onclick: retry }, 'Try again') : null);
 const verdictBadge = (v) => h('span', { class: `vb v-${v}` }, (VERDICT_LABEL[v] || v || 'unknown').toUpperCase());
+const scenarioBadge = (id) => (id ? h('span', { class: 'badge scen', title: 'The job recorded, from the capture guide' },
+  scenarioById(id)?.name || id) : null);
 const syntheticBadge = () => h('span', {
   class: 'badge warn', title: 'A development session made from synthetic test clips, not footage of a real job',
 }, 'synthetic test clips');
@@ -330,6 +333,7 @@ class SessionsView {
           h('h3', { class: 'session-name' }, h('a', { href }, name)),
           h('p', { class: 'session-meta' },
             s.kind === 'sample' ? h('span', { class: 'badge' }, 'Sample') : null,
+            scenarioBadge(s.scenario),
             s.synthetic ? syntheticBadge() : null,
             h('span', { class: 'muted' },
               [`${s.clips ?? '?'} cameras`, formatClock(num(s.duration_s)), s.id].join(' · '))),
@@ -557,12 +561,14 @@ class AnalysisView {
       h('h1', { class: 'page-title' }, s.name || s.id),
       h('p', { class: 'session-meta' },
         s.kind === 'sample' ? h('span', { class: 'badge' }, 'Sample') : null,
+        scenarioBadge(s.scenario),
         s.synthetic ? syntheticBadge() : null,
         h('span', { class: 'muted' }, [
           s.recorded ? `recorded ${s.recorded}` : null,
           `${clips.length} cameras`,
           this.duration ? formatClock(this.duration) : null,
-        ].filter(Boolean).join(' · '))));
+        ].filter(Boolean).join(' · '))),
+      s.brief ? h('p', { class: 'brief muted' }, s.brief) : null);
 
     // Banner: the "N of M" moment, the engineer line, and the actions.
     this.bannerMain = h('h2', { class: 'banner-main' });
@@ -665,6 +671,9 @@ class AnalysisView {
     });
     this.engineer.addEventListener('input', () => storage.set('localStorage', ENGINEER_KEY, this.engineer.value.trim() || null));
     this.stepList = h('ol', { class: 'steps' });
+    this.filter = 'all';
+    this.filterBar = h('div', { class: 'filters', role: 'group', 'aria-label': 'Show steps' });
+    this.filterEmpty = h('p', { class: 'filter-empty', hidden: true }, 'No step matches this filter.');
     const howto = h('details', { class: 'howto' },
       h('summary', null, 'How to read the verdicts and the verifier'),
       h('dl', { class: 'howto-list' },
@@ -679,7 +688,9 @@ class AnalysisView {
       h('h2', { id: 'steps-h' }, 'Steps'),
       h('div', { class: 'engineer-field' }, h('label', { for: 'engineer' }, 'Engineer’s name, for the sign-offs'), this.engineer),
       howto,
-      this.stepList);
+      this.filterBar,
+      this.stepList,
+      this.filterEmpty);
     this.layoutCard = h('section', { class: 'card layout-card', 'aria-labelledby': 'layout-h' });
     this.robotCard = h('section', { class: 'card robot', 'aria-labelledby': 'robot-h' });
     this.cycleCard = h('section', { class: 'card cycle-card', 'aria-labelledby': 'cycle-h' });
@@ -1020,6 +1031,41 @@ class AnalysisView {
     }
     this.stepList.replaceChildren(...steps.map((s, i) => this.stepRow(s, i)));
     this.updateSignoffs();
+    this.renderFilters(steps);
+  }
+
+  renderFilters(steps) {
+    const c = verdictFilterCounts(steps);
+    const chips = [['all', 'All'], ['automate', 'Automate'], ['needs_fixture', 'Needs fixture'], ['keep_human', 'Keep human'],
+      ['flagged', 'Flagged by the check']];
+    this.filterBtns = new Map();
+    this.filterBar.replaceChildren(...chips.filter(([k]) => k === 'all' || c[k] > 0).map(([k, label]) => {
+      const b = h('button', { type: 'button', class: 'btn', 'aria-pressed': String(k === this.filter), onclick: () => this.setFilter(k) },
+        label, h('span', { class: 'n' }, String(c[k])));
+      this.filterBtns.set(k, b);
+      return b;
+    }));
+    this.filterBar.hidden = steps.length < 2;
+    this.applyFilter();
+  }
+
+  setFilter(k) {
+    this.filter = this.filterBtns?.has(k) ? k : 'all';
+    for (const [key, b] of this.filterBtns || []) b.setAttribute('aria-pressed', String(key === this.filter));
+    this.applyFilter();
+  }
+
+  applyFilter() {
+    const steps = this.analysis?.result?.steps || [];
+    let shown = 0;
+    steps.forEach((s) => {
+      const row = this.stepRows?.get(s.id);
+      if (!row) return;
+      const on = stepMatchesFilter(s, this.filter);
+      row.hidden = !on;
+      if (on) shown++;
+    });
+    this.filterEmpty.hidden = shown > 0 || !steps.length;
   }
 
   stepRow(s, i) {
@@ -1195,8 +1241,10 @@ class AnalysisView {
     body.push(...[].concat(cycleBar(r)));
     this.factorIn = h('input', { id: 'speed-factor', type: 'number', inputmode: 'decimal', min: '0.5', max: '5', step: '0.1', value: String(factor0) });
     this.cycleOutEl = h('dl', { class: 'kv est-out' });
+    this.lanesEl = h('div', { class: 'lanes-wrap', 'aria-label': 'The proposed cell: cobot lane and operator lane over one cycle' });
     this.factorIn.addEventListener('input', () => this.recomputeCycle());
-    body.push(h('h3', { class: 'sub' }, 'With a cobot ', estimateBadge('estimate')),
+    body.push(h('h3', { class: 'sub' }, 'The proposed cell ', estimateBadge('estimate')),
+      this.lanesEl,
       h('div', { class: 'factor-row' }, h('label', { for: 'speed-factor' }, 'Robot speed factor (× the operator’s time)'), this.factorIn),
       this.cycleOutEl,
       h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'),
@@ -1212,11 +1260,31 @@ class AnalysisView {
     this.factorIn?.setAttribute('aria-invalid', String(bad));
     const s = (x) => (bad ? '–' : `${x.toFixed(1)} s`);
     if (!bad) this.updateTile('cycle', `${est.parallel_cycle_s.toFixed(1)} s`, `${est.human_cycle_s.toFixed(1)} s by hand today`);
+    this.renderLanes(bad ? null : cellLanes(r, this.factorIn?.value));
     this.cycleOutEl?.replaceChildren(
       h('dt', null, 'Robot, its steps'), h('dd', null, bad ? '–' : `${s(est.robot_cycle_s)} (${est.automated_steps_s.toFixed(1)} s × ${est.speed_factor})`),
       h('dt', null, 'Operator, the rest'), h('dd', null, bad ? '–' : `${s(est.operator_cycle_s)}${est.unassigned_s > 0.05 ? ` + ${est.unassigned_s.toFixed(1)} s uncovered` : ''}`),
       h('dt', null, 'Side by side'), h('dd', null, h('b', null, s(bad ? 0 : est.parallel_cycle_s)),
         bad || !(est.human_cycle_s > 0) ? '' : ` vs ${est.human_cycle_s.toFixed(1)} s today`));
+  }
+
+  renderLanes(lanes) {
+    if (!this.lanesEl) return;
+    if (!lanes) { this.lanesEl.replaceChildren(h('p', { class: 'small muted' }, 'No cycle to split.')); return; }
+    const bar = (items, idlePct, idleTitle) => h('div', { class: 'lane' },
+      ...items.map((it) => h('span', { class: `seg-bar v-${it.verdict}`, style: { width: `${it.pct}%` },
+        title: `${it.index >= 0 ? `${it.index + 1} · ` : ''}${it.name}: ${it.seconds.toFixed(1)} s` },
+        h('span', null, it.index >= 0 ? `${it.index + 1} · ${it.name}` : it.name))),
+      idlePct > 0.5 ? h('span', { class: 'seg-bar idle', style: { width: `${idlePct}%` }, title: idleTitle }) : null);
+    this.lanesEl.replaceChildren(
+      h('div', { class: 'lanes' },
+        h('span', { class: 'lane-name' }, 'Cobot'), bar(lanes.robot, lanes.robot_idle_pct, 'waiting for the operator'),
+        h('span', { class: 'lane-total' }, `${lanes.robot_s.toFixed(1)} s`),
+        h('span', { class: 'lane-name' }, 'Operator'), bar(lanes.operator, lanes.operator_idle_pct, 'free while the cobot works'),
+        h('span', { class: 'lane-total' }, `${lanes.operator_s.toFixed(1)} s`)),
+      h('p', { class: 'small muted lanes-note' },
+        `Side by side the cycle takes ${lanes.total_s.toFixed(1)} s, against ${lanes.human_cycle_s.toFixed(1)} s by hand today. `
+        + 'The cobot lane is the automate steps at the speed factor; the operator keeps the rest.'));
   }
 
   /* ----- S5 payback */
@@ -1541,10 +1609,12 @@ class ReportView {
           h('p', { class: 'kicker' }, 'CellPilot feasibility study'),
           h('h1', null, s.name || s.id),
           h('p', { class: 'muted' }, [
+            s.scenario ? (scenarioById(s.scenario)?.name || s.scenario) : null,
             s.recorded ? `recorded ${s.recorded}` : null, `${clips.length} cameras`,
             clips[0] ? formatClock(num(clips[0].duration_s)) : null, s.synthetic ? 'synthetic test clips' : null,
             a.live ? 'live run' : 'stored result', a.model ? `model ${a.model}` : null,
-            a.finished_at ? `analysed ${fmtDateTime(a.finished_at)}` : null].filter(Boolean).join(' · '))),
+            a.finished_at ? `analysed ${fmtDateTime(a.finished_at)}` : null].filter(Boolean).join(' · ')),
+          s.brief ? h('p', { class: 'brief' }, s.brief) : null),
         h('section', { class: 'report-banner' },
           h('h2', null, bannerText(r.counts)),
           h('p', null, h('b', null, `Engineer: ${tally.approved} of ${tally.total} approved${tally.flagged ? `, ${tally.flagged} flagged` : ''}`),
@@ -1603,9 +1673,10 @@ class GuideView {
       h('div', { class: 'guide' }, ...GuideView.sections()));
   }
 
-  /** The four guide sections; the capture studio shows them too when no bridge answers. */
+  /** The guide sections; the capture studio shows them too when no bridge answers. */
   static sections() {
     return [
+        GuideView.jobs(),
         h('section', { class: 'card' }, h('h2', null, '1 · Where the cameras go'), h('div', { class: 'guide-pic' }, GuideView.placement()),
           h('ul', null,
             h('li', null, h('b', null, 'cam0'), ' faces the operator from across the bench, about 1.5 to 2 m away and 1.6 to 1.8 m high, tilted down: it sees the hands, the parts and the bins. It is the reference clock: every time in the study is a cam0 time.'),
@@ -1645,6 +1716,22 @@ class GuideView {
 }`;
 
   /** Top view: the bench, the operator, three cameras on an arc across the bench. */
+  /** The jobs to record, each with its operator card. */
+  static jobs() {
+    return h('section', { class: 'card', 'aria-labelledby': 'jobs-h' }, h('h2', { id: 'jobs-h' }, '0 · Choose the job to record'),
+      h('p', null, 'Five manual jobs from the track’s factories, each one a cycle the operator repeats. Pick one, set the bench '
+        + 'with the stand-ins, and act out the cycle 8 to 10 times. In the capture studio choose the same job when you make the session, '
+        + 'so the study carries the station’s description.'),
+      h('ul', { class: 'rules small' }, RECORDING_RULES.map((r) => h('li', null, r))),
+      h('div', { class: 'scen-grid' }, SCENARIOS.map((sc) => h('article', { class: 'scen', 'aria-label': sc.name },
+        h('h3', null, sc.name), h('p', { class: 'where' }, sc.short, ' · ', sc.where),
+        h('h4', null, 'The cycle'), h('ol', null, sc.cycle.map((c) => h('li', null, c))),
+        h('h4', null, 'On the bench'), h('ul', null, sc.props.map((p) => h('li', null, p))),
+        h('h4', null, 'Cameras'), h('p', null, sc.cameras),
+        h('p', { class: 'expect' }, h('b', null, 'What we expect: '), sc.expect, ' The study decides.'),
+        h('p', { class: 'expect' }, h('b', null, 'Why it matters: '), sc.why)))));
+  }
+
   static placement() {
     const root = svg('svg', { class: 'guide-svg', viewBox: '0 0 720 420', role: 'img',
       'aria-label': 'Top view: the operator stands in front of the bench; cam0 faces the operator from across the bench, cam1 and cam2 are 45 degrees to each side, all about 2 metres away' });
@@ -1819,6 +1906,17 @@ class CaptureView {
     // 5 · make session
     this.sidIn = h('input', { id: 'sess-id', type: 'text', maxlength: '80', autocomplete: 'off', value: suggestSessionId('kitting') });
     this.sessNameIn = h('input', { id: 'sess-name', type: 'text', maxlength: '120', autocomplete: 'off', value: 'Kitting station' });
+    this.scenarioSel = h('select', { id: 'sess-scenario' },
+      h('option', { value: '' }, 'Not one of the guide’s jobs'),
+      SCENARIOS.map((sc) => h('option', { value: sc.id, selected: sc.id === 'kitting' }, sc.name)));
+    this.briefIn = h('textarea', { id: 'sess-brief', rows: '3', maxlength: '600' }, scenarioById('kitting')?.brief || '');
+    this.scenarioSel.addEventListener('change', () => {
+      const sc = scenarioById(this.scenarioSel.value);
+      if (!sc) return;
+      this.sessNameIn.value = sc.name;
+      this.briefIn.value = sc.brief;
+      this.sidIn.value = suggestSessionId(sc.id);
+    });
     this.makeBtn = h('button', { type: 'button', class: 'btn primary', disabled: true, onclick: () => this.makeSession() }, 'Make session');
     this.jobBox = h('div');
     this.analyseLink = h('a', { class: 'btn primary', hidden: true }, 'Analyse it →');
@@ -1829,6 +1927,8 @@ class CaptureView {
       h('div', { class: 'take-form' },
         h('div', { class: 'field' }, h('label', { for: 'sess-id' }, 'Session id'), this.sidIn),
         h('div', { class: 'field' }, h('label', { for: 'sess-name' }, 'Name'), this.sessNameIn),
+        h('div', { class: 'field' }, h('label', { for: 'sess-scenario' }, 'Job (from the capture guide)'), this.scenarioSel),
+        h('div', { class: 'field wide' }, h('label', { for: 'sess-brief' }, 'The station, in one or two sentences (the model reads this)'), this.briefIn),
         this.makeBtn, this.analyseLink),
       this.jobBox, this.sessMsg);
 
@@ -2099,7 +2199,7 @@ class CaptureView {
     const name = this.sessNameIn.value.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(sid)) { this.sessMsg.textContent = 'Session id: letters, digits, dashes.'; this.sidIn.focus(); return; }
     if (!name) { this.sessMsg.textContent = 'Give the session a name.'; this.sessNameIn.focus(); return; }
-    const body = { sid, name };
+    const body = { sid, name, scenario: this.scenarioSel.value, brief: this.briefIn.value.trim() };
     if (this.folderMode) Object.assign(body, this.folderMode);
     else if (this.take?.state === 'stopped' && this.take.offloaded) body.take_id = this.take.id;
     else { this.sessMsg.textContent = 'Record a take first, or check a folder.'; return; }

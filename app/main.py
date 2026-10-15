@@ -112,6 +112,7 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
             s = samples.session(sid)
             cam0 = next((c for c in s["clips"] if c["view"] == "cam0"), None)
             out.append({"id": sid, "name": s["name"], "kind": s["kind"], "synthetic": s["synthetic"],
+                        "scenario": s.get("scenario", ""),
                         "clips": len(s["clips"]), "duration_s": cam0["duration_s"] if cam0 else 0.0})
         return out
 

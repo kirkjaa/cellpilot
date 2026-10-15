@@ -92,3 +92,15 @@ def test_bad_answer_raises_readable_error(monkeypatch):
 def test_model_from_env(monkeypatch):
     monkeypatch.setenv("CELLPILOT_MODEL", "gemini-3.8-flash")
     assert argon.model_name() == "gemini-3.8-flash"
+
+
+def test_context_carries_the_station_brief_only_when_given():
+    clips = [{"view": "cam0", "offset_s": 0.0, "duration_s": 10.0}, {"view": "cam1", "offset_s": 0.2, "duration_s": 10.0},
+             {"view": "cam2", "offset_s": 0.45, "duration_s": 10.0}]
+    plain = argon.context_text({"clips": clips})
+    assert "Station" not in plain
+    with_brief = argon.context_text({"clips": clips, "brief": "  A kitting   station.\nThree bins. "})
+    assert "Station, as described by the people who filmed it: A kitting station. Three bins." in with_brief
+    assert with_brief.replace("Station, as described by the people who filmed it: A kitting station. Three bins.\n", "") == plain
+    long = argon.context_text({"clips": clips, "brief": "x" * 2000})
+    assert "x" * 600 in long and "x" * 601 not in long

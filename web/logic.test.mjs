@@ -7,8 +7,9 @@ import {
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
-  featuredSession, summaryTiles,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes,
 } from './logic.js';
+import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
@@ -434,4 +435,59 @@ test('summaryTiles degrades to dashes without a robot, a cycle or payback inputs
   assert.equal(t[3].value, '–');
   const noFit = summaryTiles({ robot: { model: 'UR3e', fits: false } });
   assert.equal(noFit[1].kind, 'keep_human');
+});
+
+test('verdict filter counts and matching', () => {
+  const steps = [
+    { verdict: 'automate' }, { verdict: 'automate', preflagged: true }, { verdict: 'keep_human' },
+    { verdict: 'needs_fixture', preflagged: true },
+  ];
+  assert.deepEqual(verdictFilterCounts(steps), { all: 4, automate: 2, needs_fixture: 1, keep_human: 1, flagged: 2 });
+  assert.deepEqual(verdictFilterCounts(undefined), { all: 0, automate: 0, needs_fixture: 0, keep_human: 0, flagged: 0 });
+  assert.equal(steps.filter((s) => stepMatchesFilter(s, 'all')).length, 4);
+  assert.equal(steps.filter((s) => stepMatchesFilter(s, 'automate')).length, 2);
+  assert.equal(steps.filter((s) => stepMatchesFilter(s, 'flagged')).length, 2);
+  assert.equal(steps.filter((s) => stepMatchesFilter(s, 'keep_human')).length, 1);
+  assert.equal(stepMatchesFilter({ verdict: 'automate' }, undefined), true);
+});
+
+test('cellLanes splits one cycle between the cobot and the operator', () => {
+  const result = {
+    cycle_time_s: 10,
+    steps: [
+      { name: 'Pick', verdict: 'automate', mean_duration_s: 4 },
+      { name: 'Screw', verdict: 'needs_fixture', mean_duration_s: 2 },
+      { name: 'Place', verdict: 'automate', mean_duration_s: 2 },
+      { name: 'Check', verdict: 'keep_human', mean_duration_s: 1 },
+    ],
+  };
+  const lanes = cellLanes(result, 1.5);
+  // cobot: (4 + 2) × 1.5 = 9 s; operator: 2 + 1 + 1 s uncovered = 4 s; side by side = 9 s
+  assert.equal(lanes.total_s, 9);
+  assert.equal(lanes.robot_s, 9);
+  assert.equal(lanes.operator_s, 4);
+  assert.deepEqual(lanes.robot.map((x) => x.name), ['Pick', 'Place']);
+  assert.deepEqual(lanes.operator.map((x) => x.name), ['Screw', 'Check', 'not covered by a step']);
+  near(lanes.robot[0].pct, (6 / 9) * 100);
+  near(lanes.operator[2].seconds, 1);
+  near(lanes.robot_idle_pct, 0);
+  near(lanes.operator_idle_pct, (5 / 9) * 100);
+  assert.equal(cellLanes({ steps: [] }, 1.3), null);
+  assert.equal(cellLanes(result, 0), null);
+});
+
+test('the scenarios are complete and distinct', () => {
+  assert.ok(SCENARIOS.length >= 5);
+  assert.equal(new Set(SCENARIOS.map((s) => s.id)).size, SCENARIOS.length);
+  for (const s of SCENARIOS) {
+    assert.match(s.id, /^[a-z0-9-]{2,40}$/);
+    assert.ok(s.name && s.short && s.where && s.why && s.cameras && s.expect, s.id);
+    assert.ok(s.cycle.length >= 4 && s.cycle.length <= 6, `${s.id}: ${s.cycle.length} steps`);
+    assert.ok(s.props.length >= 3, s.id);
+    assert.ok(s.brief.length >= 80 && s.brief.length <= 600, `${s.id}: brief ${s.brief.length}`);
+    assert.ok(!/automate|fixture|keep human/i.test(s.brief), `${s.id}: the brief must not lead the model`);
+  }
+  assert.equal(scenarioById('kitting').name, 'Kitting station');
+  assert.equal(scenarioById('nope'), null);
+  assert.ok(RECORDING_RULES.length >= 3);
 });

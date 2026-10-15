@@ -37,6 +37,8 @@ class Session(BaseModel):
     kind: str = "sample"
     recorded: str = ""
     synthetic: bool = False
+    scenario: str = ""  # a job id from web/scenarios.js, e.g. "kitting"; shown as a chip
+    brief: str = ""  # what the station is and what the operator does; goes to the model as context
     clips: list[Clip]
 
 

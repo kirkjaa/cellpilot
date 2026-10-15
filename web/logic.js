@@ -567,3 +567,55 @@ export function summaryTiles(result, { factor, roi } = {}) {
   } : { key: 'payback', kind: null, value: '–', label: 'no payback figure', detail: '' });
   return tiles;
 }
+
+/* ------------------------------------------------------------ engineer view */
+
+/** Counts for the step filter chips: every step, by verdict, and the ones the check pass flagged. */
+export function verdictFilterCounts(steps) {
+  const c = { all: 0, automate: 0, needs_fixture: 0, keep_human: 0, flagged: 0 };
+  for (const s of steps || []) {
+    c.all++;
+    if (s.verdict in c) c[s.verdict]++;
+    if (s.preflagged) c.flagged++;
+  }
+  return c;
+}
+
+export function stepMatchesFilter(step, filter) {
+  if (!filter || filter === 'all') return true;
+  if (filter === 'flagged') return Boolean(step?.preflagged);
+  return step?.verdict === filter;
+}
+
+/**
+ * The proposed cell as two lanes over one cycle: what the cobot does (automate steps × the speed factor)
+ * and what the operator keeps (the other steps plus the time no step covers). Percentages are of the
+ * longer lane, the side-by-side cycle. Null without a measured cycle.
+ */
+export function cellLanes(result, factor) {
+  const est = robotCycle(result, factor);
+  if (!est) return null;
+  const total = Math.max(est.parallel_cycle_s, 1e-6);
+  const robot = [];
+  const operator = [];
+  (result.steps || []).forEach((s, index) => {
+    const d = Math.max(0, Number(s.mean_duration_s) || 0);
+    if (s.verdict === 'automate') {
+      const seconds = d * est.speed_factor;
+      robot.push({ index, name: s.name, verdict: s.verdict, seconds, pct: (seconds / total) * 100 });
+    } else {
+      operator.push({ index, name: s.name, verdict: s.verdict, seconds: d, pct: (d / total) * 100 });
+    }
+  });
+  if (est.unassigned_s > 1e-6) {
+    operator.push({ index: -1, name: 'not covered by a step', verdict: 'unassigned', seconds: est.unassigned_s,
+      pct: (est.unassigned_s / total) * 100 });
+  }
+  const operator_s = est.operator_cycle_s + est.unassigned_s;
+  return {
+    total_s: est.parallel_cycle_s, human_cycle_s: est.human_cycle_s, speed_factor: est.speed_factor,
+    robot, operator, robot_s: est.robot_cycle_s, operator_s,
+    robot_idle_pct: Math.max(0, (1 - est.robot_cycle_s / total) * 100),
+    operator_idle_pct: Math.max(0, (1 - operator_s / total) * 100),
+  };
+}
