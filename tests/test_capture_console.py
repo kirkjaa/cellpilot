@@ -256,7 +256,7 @@ def test_the_app_mounts_the_bridge_for_the_cloud_demo(fake, tmp_path, monkeypatc
     with TestClient(create_app(store, samples)) as c:
         assert c.get("/api/health").json() == {"ok": True, "capture_bridge": "/capture-bridge"}
         h = c.get("/capture-bridge/api/capture/health").json()
-        assert h["bridge"] == "cellpilot-capture" and h["console"]["url"] == fake.url and h["console"]["user"] == USER
+        assert h["bridge"] == "cellpilot-capture" and h["console"]["url"] == fake.url and "user" not in h["console"]
         pub = c.get("/capture-bridge/api/capture/config").json()
         assert pub["console"]["url"] == fake.url and "password" not in json.dumps(pub) and USER not in json.dumps(pub)
         # the bootstrap logs in and starts the rig in the background

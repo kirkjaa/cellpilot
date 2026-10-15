@@ -161,7 +161,7 @@ class ConsoleRig(Rig):
         self.controller = Link("controller", cfg.controller_url, kind="controller", on_event=self._controller_event,
                                on_connect=self._controller_connect, on_preview=self._preview_frame,
                                headers=self.http.cookie_header)
-        self.console_state: dict = {"url": self.console.url, "user": self.console.username, "logged_in": False,
+        self.console_state: dict = {"url": self.console.url, "logged_in": False,  # no username: health is public in the cloud
                                     "rig_running": False, "rig": None, "error": None}
         self._boot: Optional[asyncio.Task] = None
         self.started_rig = False      # this bridge started the rig (so it should warm it up)
