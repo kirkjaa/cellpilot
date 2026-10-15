@@ -142,6 +142,7 @@ def test_console_config_derives_the_controller_and_keeps_the_password_private(tm
     assert cfg.cameras == [] and cfg.allow_lan is False  # a remote console needs no allow_lan
     pub = cfg.public()
     assert pub["console"]["url"] == "https://m1.example.com" and "password" not in json.dumps(pub)
+    assert "username" not in pub["console"] and "env-user" not in json.dumps(pub)  # a public endpoint shows no login
     assert "env-secret" not in repr(cfg)
     local = cfgmod.parse({"console": {"url": "http://127.0.0.1:5800", "preview_width": 320, "max_take_seconds": 30}}, base=tmp_path)
     assert local.controller_url == "ws://127.0.0.1:5800/ws/controller?preview=320" and local.console.max_take_seconds == 30
@@ -257,7 +258,7 @@ def test_the_app_mounts_the_bridge_for_the_cloud_demo(fake, tmp_path, monkeypatc
         h = c.get("/capture-bridge/api/capture/health").json()
         assert h["bridge"] == "cellpilot-capture" and h["console"]["url"] == fake.url and h["console"]["user"] == USER
         pub = c.get("/capture-bridge/api/capture/config").json()
-        assert pub["console"]["url"] == fake.url and "password" not in json.dumps(pub)
+        assert pub["console"]["url"] == fake.url and "password" not in json.dumps(pub) and USER not in json.dumps(pub)
         # the bootstrap logs in and starts the rig in the background
         for _ in range(50):
             if fake.rig_started:

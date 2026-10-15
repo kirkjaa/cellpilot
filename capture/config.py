@@ -64,7 +64,8 @@ class ConsoleConfig:
         return f"{scheme}://{u.netloc}/ws/controller?preview={int(self.preview_width)}"
 
     def public(self) -> dict:
-        return {"url": self.url, "username": self.username, "rig": dict(self.rig), "preview_width": self.preview_width,
+        # no username: the page does not need it and the endpoint is public on the cloud service
+        return {"url": self.url, "rig": dict(self.rig), "preview_width": self.preview_width,
                 "max_take_seconds": self.max_take_seconds}
 
 
