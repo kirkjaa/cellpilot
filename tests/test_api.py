@@ -156,3 +156,11 @@ def test_media_supports_range_requests(make_client, samples):
 
     assert c.get(f"/media/{SID}/session.json").status_code == 404
     assert c.get(f"/media/{SID}/cam9.mp4").status_code == 404
+
+
+def test_page_files_revalidate_but_clips_may_cache(make_client, samples):
+    c = make_client()
+    assert c.get("/").headers.get("cache-control") == "no-cache"
+    assert c.get("/api/health").headers.get("cache-control") is None
+    media = c.get(f"/media/{SID}/cam0.mp4", headers={"Range": "bytes=0-10"})
+    assert media.status_code in (200, 206) and media.headers.get("cache-control") != "no-cache"

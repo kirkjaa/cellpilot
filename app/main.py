@@ -79,6 +79,15 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         app.add_middleware(CORSMiddleware, allow_origins=origins,
                            allow_methods=["GET", "POST", "PUT"], allow_headers=["*"])
 
+    @app.middleware("http")
+    async def page_files_revalidate(request, call_next):
+        # The page's files have no build hashes, so browsers must ask again after every deploy; clips may be cached.
+        response = await call_next(request)
+        path = request.url.path
+        if not path.startswith(("/media/", "/api/", "/capture-bridge/")):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     # ---------------------------------------------------------------- helpers
 
     def session_or_404(sid: str) -> dict:
