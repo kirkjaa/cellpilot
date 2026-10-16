@@ -1936,8 +1936,8 @@ class CaptureView {
 
     // 3 · take
     this.nameIn = h('input', { id: 'take-name', type: 'text', maxlength: '80', value: 'kitting', autocomplete: 'off' });
-    this.secIn = h('input', { id: 'take-sec', type: 'number', inputmode: 'numeric', min: '3', max: '900', step: '1', value: '20' });
-    this.recordBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.record() }, '● Record 20 s');
+    this.secIn = h('input', { id: 'take-sec', type: 'number', inputmode: 'numeric', min: '3', max: '900', step: '1', value: '180' });
+    this.recordBtn = h('button', { type: 'button', class: 'btn primary', onclick: () => this.record() }, '● Record 180 s');
     this.secIn.addEventListener('input', () => this.updateRecordLabel());
     this.stopBtn = h('button', { type: 'button', class: 'btn', disabled: true, title: 'Ends the take early; the cameras stop by themselves at the end of the take length', onclick: () => this.stopTake() }, '■ Stop');
     this.ctlHint = h('p', { class: 'small cap-msg' });
@@ -2066,6 +2066,12 @@ class CaptureView {
     }
     const c = r.data;
     const kind = rigKind(c.cameras, c.console);
+    // A capped rig (the cloud demo) cannot take the 180 s default: fit the length box to the cap.
+    const cap = Number(c.console?.max_take_seconds);
+    if (Number.isFinite(cap) && cap > 0 && this.secIn) {
+      this.secIn.max = String(Math.min(900, cap));
+      if (Number(this.secIn.value) > cap) { this.secIn.value = String(Math.floor(cap)); this.updateRecordLabel(); }
+    }
     const where = (u) => { try { const x = new URL(u); return x.port ? `${x.hostname}:${x.port}` : x.hostname; } catch { return u; } };
     const consoleHost = (() => { try { return new URL(c.console?.url || '').hostname; } catch { return c.console?.url || ''; } })();
     const mode = kind === 'console' ? `Simulated M1 rig on NODAL’s emulator console at ${consoleHost}: three virtual cameras speaking the real camera protocol, the real controller, synthetic footage`
