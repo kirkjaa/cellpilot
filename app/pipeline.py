@@ -23,7 +23,7 @@ from . import argon
 from .catalogue import choose_robot, cycle_estimate
 from .layout import build_layout
 from .payback import roi_defaults
-from .schemas import (Analysis, ArgonLayout, Counts, Layout, Occurrence, Part, Reason, Result, Step, TaskGraph,
+from .schemas import (Analysis, ArgonLayout, Counts, Layout, Occurrence, Part, Reason, Result, Step, TaskGraph, Twin,
                       VerifierCheck, Verify)
 from .store import Samples, Store, analysis_key, argon_key, latest_key, make_store
 
@@ -176,7 +176,7 @@ def build_result(graph: TaskGraph, check: Optional[Verify], estimate: Optional[A
 
 STAGE_TEXT = {"queued": "start-up", "steps": "the step analysis (Argon call A)",
               "verifier": "the verifier (Argon call D)", "layout": "the layout estimate (Argon call C)",
-              "robot": "the robot choice", "payback": "the payback figures",
+              "robot": "the robot choice", "payback": "the payback figures", "twin": "the cobot twin (kinematic simulation)",
               "notes": "the engineer's notes (Gemini call E)", "done": "saving"}
 
 
@@ -247,6 +247,14 @@ def run(store: Store, samples: Samples, sid: str, aid: str) -> dict:
 
         save(stage="payback")
         result = assemble(a.parsed, steps, parts, robot, layout, layout_error)
+
+        save(stage="twin")
+        try:  # optional: a kinematic simulation of the automatable steps on the chosen arm (no clip on the server)
+            from . import twin as twin_mod
+            result.twin = Twin.model_validate(twin_mod.simulate(result))
+        except Exception as e:  # noqa: BLE001
+            log.exception("analysis %s: the cobot twin failed; continuing without it", aid)
+            result.twin_error = readable_error("twin", e)
 
         save(stage="notes")
         try:  # optional: a general Gemini model writes the engineer's notes from the result, text only

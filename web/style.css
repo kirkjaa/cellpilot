@@ -582,3 +582,12 @@ select { font: inherit; color: inherit; background: var(--surface); border: 1px 
 .src-list { margin: 4px 0 8px; padding-left: 18px; font-size: 13.5px; }
 .src-list li { margin: 2px 0; overflow-wrap: anywhere; }
 .ways { margin: 0 0 8px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+
+/* the cobot twin card */
+.twin-clip { width: 100%; border-radius: 10px; background: #000; display: block; margin: 6px 0 10px; }
+.twin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.twin-table th, .twin-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.twin-table th { white-space: nowrap; }
+.twin-table td.num { white-space: nowrap; }
+.twin-table th { color: var(--muted); font-weight: 600; }
+.twin-table tr.total td { font-weight: 650; border-bottom: 0; }

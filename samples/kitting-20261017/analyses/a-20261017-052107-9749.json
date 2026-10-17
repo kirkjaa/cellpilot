@@ -505,7 +505,166 @@
       ]
     },
     "notes_error": null,
-    "notes_model": "gemini-3.8-flash"
+    "notes_model": "gemini-3.8-flash",
+    "twin": {
+      "simulator": "MuJoCo 3.16 + mink (kinematic)",
+      "arm_requested": "UR3e",
+      "arm_model": "UR5e",
+      "model_note": "UR3e has no MuJoCo Menagerie model; simulated with the UR5e model, the nearest in the catalogue. Reach and timing are the UR5e's. Place power bank on table: no pick point of its own; the part is taken from the point of step s1 (Pick power bank from table).",
+      "base": {
+        "x_m": 0.263,
+        "y_m": 0.67,
+        "farthest_point_mm": 712,
+        "fits": true,
+        "clearance_m": 0.162,
+        "rule": "placed at the back edge of the bench: the farthest automatable point is 712 mm away, within 85 % of the 850 mm reach; 1 base position tried for a collision-free cycle"
+      },
+      "points": [
+        {
+          "step_id": "s3",
+          "name": "Place power bank on table",
+          "kind": "pick",
+          "x_m": 0.78,
+          "y_m": 0.2,
+          "z_m": 0.05,
+          "reachable": true,
+          "position_error_mm": 0.7,
+          "collisions": [],
+          "note": "part taken from step s1's point"
+        },
+        {
+          "step_id": "s3",
+          "name": "Place power bank on table",
+          "kind": "place",
+          "x_m": 0.78,
+          "y_m": 0.2,
+          "z_m": 0.05,
+          "reachable": true,
+          "position_error_mm": 0.7,
+          "collisions": [],
+          "note": ""
+        }
+      ],
+      "steps_simulated": [
+        "s3"
+      ],
+      "all_reachable": true,
+      "collision_free": true,
+      "path_collisions": [],
+      "robot_cycle_s": 2.92,
+      "operator_cycle_s": 2.87,
+      "unassigned_s": 2.4,
+      "parallel_cycle_s": 5.27,
+      "estimate_parallel_cycle_s": 5.27,
+      "segments": [
+        {
+          "to": "Place power bank on table: pick",
+          "joint_rad": 0.261,
+          "tool_m": 0.12,
+          "seconds": 0.48
+        },
+        {
+          "to": "Place power bank on table: above pick",
+          "joint_rad": 0.26,
+          "tool_m": 0.12,
+          "seconds": 0.48
+        },
+        {
+          "to": "Place power bank on table: above place",
+          "joint_rad": 0.001,
+          "tool_m": 0.0,
+          "seconds": 0.0
+        },
+        {
+          "to": "Place power bank on table: place",
+          "joint_rad": 0.261,
+          "tool_m": 0.12,
+          "seconds": 0.48
+        },
+        {
+          "to": "Place power bank on table: above place",
+          "joint_rad": 0.26,
+          "tool_m": 0.12,
+          "seconds": 0.48
+        },
+        {
+          "to": "back to the first point",
+          "joint_rad": 0.0,
+          "tool_m": 0.0,
+          "seconds": 0.0
+        }
+      ],
+      "assumptions": {
+        "tcp_speed_mps": 0.25,
+        "joint_speed_dps": 60,
+        "gripper_s": 0.5,
+        "lift_m": 0.12,
+        "tool_length_m": 0.16,
+        "reach_margin": 0.85
+      },
+      "fixtures": [
+        {
+          "step_id": "s1",
+          "name": "locating nest for power bank",
+          "x_m": 0.78,
+          "y_m": 0.2,
+          "length_m": 0.16,
+          "width_m": 0.16,
+          "height_m": 0.03
+        }
+      ],
+      "parts": [
+        {
+          "item": "UR3e cobot arm (Universal Robots)",
+          "qty": 1,
+          "low": 23000,
+          "high": 28000,
+          "currency": "USD",
+          "basis": "catalogue price band, indicative"
+        },
+        {
+          "item": "Two-finger parallel gripper (Robotiq 2F-85 class) with fingers",
+          "qty": 1,
+          "low": 4000,
+          "high": 6500,
+          "currency": "USD",
+          "basis": "typical list price, indicative"
+        },
+        {
+          "item": "Locating nest or presenter, custom (one per needs-fixture step)",
+          "qty": 1,
+          "low": 800,
+          "high": 2500,
+          "currency": "USD",
+          "basis": "machined or 3D-printed, indicative"
+        },
+        {
+          "item": "Pedestal or bench mount, cabling, control box placement",
+          "qty": 1,
+          "low": 800,
+          "high": 2000,
+          "currency": "USD",
+          "basis": "indicative"
+        },
+        {
+          "item": "Risk assessment, programming, commissioning",
+          "qty": 1,
+          "low": null,
+          "high": null,
+          "currency": "USD",
+          "basis": "the system multiple in the payback covers this (a cell costs 3 to 5 × the robot)"
+        }
+      ],
+      "clip": "a-20261017-052107-9749.mp4",
+      "method": "Kinematic twin in MuJoCo with the Menagerie arm model: the base is placed where every automatable point is within 85 % of the rated reach with the most margin; the tool goes pick, lift, place with inverse kinematics (mink); each configuration and the path between them are checked for contact with the bench, the objects and the fixtures; time = the longer of joint travel at 60°/s and tool travel at 0.25 m/s, plus 0.5 s to close or open the gripper. The part is welded to the gripper, not grasped; the gripper is a 160 mm tool; nothing here is a physics or safety validation.",
+      "parts_total": {
+        "low": 28600,
+        "high": 39000,
+        "currency": "USD",
+        "note": "hardware only, indicative; integration is in the payback's system multiple"
+      }
+    },
+    "twin_error": null
   },
   "signoffs": {}
 }

@@ -704,6 +704,7 @@ class AnalysisView {
     this.layoutCard = h('section', { class: 'card layout-card', 'aria-labelledby': 'layout-h' });
     this.robotCard = h('section', { class: 'card robot', 'aria-labelledby': 'robot-h' });
     this.cycleCard = h('section', { class: 'card cycle-card', 'aria-labelledby': 'cycle-h' });
+    this.twinCard = h('section', { class: 'card twin-card', 'aria-labelledby': 'twin-h' });
     this.payCard = h('section', { class: 'card payback-card', 'aria-labelledby': 'pay-h' });
     this.notesCard = h('section', { class: 'card notes-card', 'aria-labelledby': 'notes-h' });
     this.foot = h('p', { class: 'foot' });
@@ -711,7 +712,7 @@ class AnalysisView {
     main.replaceChildren(head, banner, this.tiles, this.vids, transport, this.driftOut, timeline, this.runStatus, this.runAnnounce,
       h('div', { class: 'cols' },
         h('div', { class: 'main-col' }, stepsPanel, this.notesCard, this.payCard),
-        h('div', { class: 'side' }, this.layoutCard, this.robotCard, this.cycleCard)),
+        h('div', { class: 'side' }, this.layoutCard, this.robotCard, this.twinCard, this.cycleCard)),
       this.foot);
 
     if (videos.length) {
@@ -884,6 +885,7 @@ class AnalysisView {
     this.layoutCard.replaceChildren(h('h2', { id: 'layout-h' }, 'Layout'), h('p', { class: 'muted' }, 'A top view of the station, estimated by the analysis.'));
     this.robotCard.replaceChildren(h('h2', { id: 'robot-h' }, 'Robot'), h('p', { class: 'muted' }, 'Chosen by the analysis.'));
     this.cycleCard.replaceChildren(h('h2', { id: 'cycle-h' }, 'Cycle time'), h('p', { class: 'muted' }, 'Measured from the analysis.'));
+    this.twinCard.replaceChildren(h('h2', { id: 'twin-h' }, 'Cobot twin'), h('p', { class: 'muted' }, 'A kinematic simulation of the automatable steps, after the analysis.'));
     this.payCard.replaceChildren(h('h2', { id: 'pay-h' }, 'Payback'), h('p', { class: 'muted' }, 'Calculated from the analysis.'));
     this.notesCard.replaceChildren(h('h2', { id: 'notes-h' }, 'Engineer’s notes'), h('p', { class: 'muted' }, 'Written from the analysis once it has run.'));
     this.foot.textContent = '';
@@ -901,6 +903,7 @@ class AnalysisView {
     this.renderSteps();
     this.renderLayout();
     this.renderRobot();
+    this.renderTwin();
     this.renderCycle();
     this.renderPayback();
     this.renderNotes();
@@ -1244,6 +1247,62 @@ class AnalysisView {
         '. The rule: the smallest arm that carries the heaviest automatable part plus a 1 kg gripper allowance and reaches every pick and place within 85 % of its rated reach. Price bands are indicative, not quotes.')));
     }
     this.robotCard.replaceChildren(h('h2', { id: 'robot-h' }, 'Robot'), ...body);
+  }
+
+  /** The cobot twin: a kinematic simulation (MuJoCo + mink) of the automatable steps on the chosen arm. */
+  renderTwin() {
+    const r = this.analysis.result;
+    const tw = r.twin;
+    const head = h('h2', { id: 'twin-h' }, 'Cobot twin ', estimateBadge('simulated'));
+    if (!tw) {
+      this.twinCard.replaceChildren(head, h('p', { class: 'muted small' },
+        r.twin_error ? `The simulation did not run: ${r.twin_error}` : 'Not simulated for this result.'));
+      return;
+    }
+    const body = [];
+    if (tw.clip) {
+      body.push(h('video', { class: 'twin-clip', src: `/api/sessions/${encodeURIComponent(this.sid)}/twin/${encodeURIComponent(this.analysis.id)}.mp4`,
+        muted: '', loop: '', autoplay: '', playsinline: '', controls: '', preload: 'metadata',
+        'aria-label': 'The simulated cobot cycle, labelled simulated' }));
+    }
+    const okMark = (ok) => h('span', { class: ok ? 'good' : 'bad', role: 'img', 'aria-label': ok ? 'yes' : 'no' }, ok ? '✓' : '✗');
+    body.push(h('p', { class: 'small' },
+      h('b', null, `${tw.arm_model} model`), tw.arm_model !== tw.arm_requested ? ` for the ${tw.arm_requested}` : '',
+      ` · base ${formatMetres(tw.base?.x_m, tw.base?.y_m)} from the bench corner · `,
+      tw.all_reachable ? 'every point reachable' : 'a point out of reach', ' ', okMark(tw.all_reachable), ' · ',
+      tw.collision_free ? 'collision-free' : `collides with ${(tw.path_collisions || []).join(', ') || 'the scenery'}`, ' ', okMark(tw.collision_free)));
+    if (tw.model_note) body.push(h('p', { class: 'fine' }, tw.model_note));
+    const rows = (tw.points || []).map((p) => h('tr', null,
+      h('td', null, p.name), h('td', null, p.kind),
+      h('td', { class: 'num' }, okMark(p.reachable), ` ${fmtN(num(p.position_error_mm), 1)} mm`),
+      h('td', null, p.collisions && p.collisions.length ? h('span', { class: 'bad' }, p.collisions.join(', ')) : h('span', { class: 'good' }, 'none'))));
+    body.push(h('div', { class: 'table-wrap' }, h('table', { class: 'twin-table' },
+      h('thead', null, h('tr', null, h('th', null, 'Step'), h('th', null, 'Point'), h('th', null, 'Reach'), h('th', null, 'Hits'))),
+      h('tbody', null, ...rows))));
+    const pointNotes = [...new Set((tw.points || []).map((p) => p.note).filter(Boolean))];
+    if (pointNotes.length) body.push(h('p', { class: 'fine' }, pointNotes.join('. ') + '.'));
+    body.push(h('dl', { class: 'kv' },
+      h('dt', null, 'Robot, its steps'), h('dd', null, `${fmtN(num(tw.robot_cycle_s), 1)} s simulated`
+        + (Number.isFinite(num(r.cycle_estimate?.robot_cycle_s)) ? ` (estimate was ${fmtN(num(r.cycle_estimate.robot_cycle_s), 1)} s)` : '')),
+      h('dt', null, 'Side by side'), h('dd', null, h('b', null, `${fmtN(num(tw.parallel_cycle_s), 1)} s`),
+        ` vs ${fmtN(num(r.cycle_time_s), 1)} s today`)));
+    if (tw.fixtures && tw.fixtures.length) {
+      body.push(h('h3', { class: 'sub' }, 'Fixtures placed'),
+        h('ul', { class: 'small' }, ...tw.fixtures.map((f) => h('li', null, `${f.name}, ${Math.round(f.length_m * 1000)} × ${Math.round(f.width_m * 1000)} mm, at ${formatMetres(f.x_m, f.y_m)}`))));
+    }
+    if (tw.parts && tw.parts.length) {
+      const money = (v, cur) => (v == null ? '–' : formatMoney(v, cur));
+      body.push(h('h3', { class: 'sub' }, 'Parts list ', estimateBadge('indicative')),
+        h('div', { class: 'table-wrap' }, h('table', { class: 'twin-table' },
+          h('thead', null, h('tr', null, h('th', null, 'Item'), h('th', null, 'Qty'), h('th', null, 'From'), h('th', null, 'To'))),
+          h('tbody', null, ...tw.parts.map((it) => h('tr', null, h('td', null, it.item, it.basis ? h('span', { class: 'muted' }, ` · ${it.basis}`) : null),
+            h('td', null, String(it.qty)), h('td', null, money(it.low, it.currency)), h('td', null, money(it.high, it.currency)))),
+            tw.parts_total ? h('tr', { class: 'total' }, h('td', null, 'Hardware total'), h('td', null, ''),
+              h('td', null, money(tw.parts_total.low, tw.parts_total.currency)), h('td', null, money(tw.parts_total.high, tw.parts_total.currency))) : null))),
+        tw.parts_total?.note ? h('p', { class: 'fine' }, tw.parts_total.note) : null);
+    }
+    body.push(h('details', { class: 'fine-d' }, h('summary', null, 'How this was worked out'), h('p', { class: 'fine' }, tw.method || '')));
+    this.twinCard.replaceChildren(head, ...body.filter(Boolean));
   }
 
   renderCycle() {
@@ -1695,6 +1754,20 @@ class ReportView {
               h('dt', null, 'Savings a year'), h('dd', null, formatMoney(pay.annual_savings, cur)),
               h('dt', null, 'Payback'), h('dd', null, h('b', null, pay.payback_months == null ? 'none (no savings)' : `≈ ${pay.payback_months.toFixed(1)} months`))),
             h('p', { class: 'fine' }, 'Investment = robot price × system multiple (a complete cell costs 3 to 5 × the robot: Automation World; Fraunhofer IPA). Grant: Singapore’s Productivity Solutions Grant (Enterprise Singapore); check the current terms. Edit every input on the analysis page.'))),
+        r.twin ? h('section', null, h('h2', null, 'Cobot twin (simulated)'),
+          h('p', null, `${r.twin.arm_model} model${r.twin.arm_model !== r.twin.arm_requested ? ` for the ${r.twin.arm_requested}` : ''}, base at ${formatMetres(r.twin.base?.x_m, r.twin.base?.y_m)} from the bench corner: `,
+            r.twin.all_reachable ? 'every automatable point reachable' : 'a point out of reach', ', ',
+            r.twin.collision_free ? 'collision-free' : `collisions with ${(r.twin.path_collisions || []).join(', ')}`,
+            `; robot ${fmtN(num(r.twin.robot_cycle_s), 1)} s on its steps, side by side ${fmtN(num(r.twin.parallel_cycle_s), 1)} s.`),
+          h('div', { class: 'table-wrap' }, h('table', { class: 'report-table' },
+            h('thead', null, h('tr', null, h('th', null, 'Step'), h('th', null, 'Point'), h('th', null, 'Reachable'), h('th', null, 'Error'), h('th', null, 'Collision'))),
+            h('tbody', null, ...(r.twin.points || []).map((p) => h('tr', null, h('td', null, p.name), h('td', null, p.kind),
+              h('td', null, p.reachable ? 'yes' : 'no'), h('td', null, `${fmtN(num(p.position_error_mm), 1)} mm`),
+              h('td', null, p.collisions && p.collisions.length ? p.collisions.join(', ') : 'none')))))),
+          r.twin.parts && r.twin.parts.length ? h('p', { class: 'small' }, h('b', null, 'Parts list (indicative): '),
+            r.twin.parts.filter((it) => it.low != null).map((it) => `${it.item} ${formatMoney(it.low, it.currency)}–${formatMoney(it.high, it.currency)}`).join('; '),
+            r.twin.parts_total ? `; hardware total ${formatMoney(r.twin.parts_total.low, r.twin.parts_total.currency)}–${formatMoney(r.twin.parts_total.high, r.twin.parts_total.currency)}.` : '.') : null,
+          h('p', { class: 'fine' }, r.twin.model_note ? `${r.twin.model_note}. ` : '', r.twin.method)) : null,
         r.notes ? h('section', null, h('h2', null, 'Engineer’s notes'),
           h('p', null, r.notes.for_the_owner),
           h('div', { class: 'report-two' },

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 View = Literal["cam0", "cam1", "cam2"]
 Verdict = Literal["automate", "keep_human", "needs_fixture"]
 Status = Literal["queued", "running", "done", "failed"]
-Stage = Literal["queued", "steps", "verifier", "layout", "robot", "payback", "notes", "done"]
+Stage = Literal["queued", "steps", "verifier", "layout", "robot", "payback", "twin", "notes", "done"]
 Decision = Literal["approved", "flagged"]
 ObjectKind = Literal["bin", "fixture", "tool", "part_source", "part_destination", "other"]
 
@@ -290,6 +290,64 @@ class Layout(BaseModel):
     notes: str = ""
 
 
+class TwinPoint(BaseModel):
+    step_id: str
+    name: str
+    kind: Literal["pick", "place"]
+    x_m: float
+    y_m: float
+    z_m: float
+    reachable: bool
+    position_error_mm: float
+    collisions: list[str] = []
+    note: str = ""
+
+
+class TwinFixture(BaseModel):
+    step_id: str
+    name: str
+    x_m: float
+    y_m: float
+    length_m: float
+    width_m: float
+    height_m: float
+
+
+class PartsItem(BaseModel):
+    item: str
+    qty: int
+    low: Optional[float] = None
+    high: Optional[float] = None
+    currency: str = "USD"
+    basis: str = ""
+
+
+class Twin(BaseModel):
+    """The cobot twin: a kinematic simulation of the automatable steps (app/twin.py); never a physics or safety check."""
+    simulator: str
+    arm_requested: str
+    arm_model: str              # the Menagerie model used; may differ from arm_requested
+    model_note: str = ""
+    base: dict                  # {"x_m", "y_m", "rule", "farthest_point_mm", "fits"}
+    points: list[TwinPoint] = []
+    steps_simulated: list[str] = []
+    all_reachable: bool
+    collision_free: bool
+    path_collisions: list[str] = []
+    robot_cycle_s: float
+    operator_cycle_s: float
+    unassigned_s: float
+    parallel_cycle_s: float
+    estimate_parallel_cycle_s: Optional[float] = None
+    segments: list[dict] = []
+    assumptions: dict = {}
+    fixtures: list[TwinFixture] = []
+    parts: list[PartsItem] = []
+    parts_total: dict = {}
+    clip: Optional[str] = None  # file name under samples/<sid>/twin/, when rendered
+    method: str = ""
+
+
 class RoiDefaults(BaseModel):
     currency: str = "SGD"
     wage_per_h: float = 14.0
@@ -319,6 +377,8 @@ class Result(BaseModel):
     notes: Optional[Notes] = None  # the engineer's notes, written from this result by a general Gemini model
     notes_error: Optional[str] = None
     notes_model: Optional[str] = None
+    twin: Optional[Twin] = None    # the cobot twin, a kinematic simulation of the automatable steps
+    twin_error: Optional[str] = None
 
 
 class Usage(BaseModel):

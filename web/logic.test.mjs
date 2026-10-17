@@ -180,11 +180,11 @@ test('engineer line counts approvals over the result steps only', () => {
 });
 
 test('stage chips for a live run', () => {
-  assert.deepEqual(STAGES, ['steps', 'verifier', 'layout', 'robot', 'payback', 'notes']);
-  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo', 'todo', 'todo']);
-  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo', 'todo', 'todo']);
-  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done', 'done', 'done']);
-  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'done', 'failed', 'todo', 'todo']);
+  assert.deepEqual(STAGES, ['steps', 'verifier', 'layout', 'robot', 'payback', 'twin', 'notes']);
+  assert.deepEqual(stageStates('running', 'verifier').map((s) => s.state), ['done', 'run', 'todo', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('queued', 'queued').map((s) => s.state), ['todo', 'todo', 'todo', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(stageStates('done', 'done').map((s) => s.state), ['done', 'done', 'done', 'done', 'done', 'done', 'done']);
+  assert.deepEqual(stageStates('failed', 'robot').map((s) => s.state), ['done', 'done', 'done', 'failed', 'todo', 'todo', 'todo']);
 });
 
 test('formatting', () => {
@@ -530,4 +530,14 @@ test('placeLabels nudges an overlapping label down a line and clamps labels into
   placeLabels([under, fixed], view, fs);
   assert.equal(fixed.y, 300);                  // fixed labels never move
   assert.ok(under.y > 300);                    // the movable one goes below it
+});
+
+test('the cycle tile reads the simulated cycle when the cobot twin ran', () => {
+  const base = { counts: { automate: 1, needs_fixture: 1, keep_human: 1 }, robot: { model: 'UR3e', payload_kg: 3, reach_mm: 500, fits: true },
+    cycle_time_s: 6.5, cycles: 3, steps: [{ id: 's3', verdict: 'automate', mean_duration_s: 1.2 }], cycle_estimate: { speed_factor: 1.3 } };
+  const est = summaryTiles(base).find((t) => t.key === 'cycle');
+  assert.equal(est.label, 'cycle with a cobot, estimated');
+  const sim = summaryTiles({ ...base, twin: { parallel_cycle_s: 5.1 } }).find((t) => t.key === 'cycle');
+  assert.equal(sim.value, '5.1 s');
+  assert.equal(sim.label, 'cycle with a cobot, simulated');
 });

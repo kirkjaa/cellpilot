@@ -29,6 +29,11 @@ Gemini 4 Argon on Gemini Enterprise Agent Platform and Cloud Run are Google Clou
 
 The page is plain HTML, CSS and JavaScript with no third-party libraries.
 
+## The cobot twin
+
+- [MuJoCo](https://github.com/google-deepmind/mujoco) 3.16 (Apache-2.0) and [mink](https://github.com/kevinzakka/mink) 1.3 (Apache-2.0), with the [daqp](https://github.com/darnstrom/daqp) QP solver (MIT), as Python dependencies.
+- [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) (Apache-2.0): the `universal_robots_ur5e` and `universal_robots_ur10e` models, themselves BSD-3-Clause (ROS Industrial Consortium, 2018). They are not copied into this repository: the Dockerfile fetches those two folders at build time and `CELLPILOT_MENAGERIE` points at a local checkout; each folder carries its LICENSE file.
+
 ## Media
 
 The sample clips in `samples/kitting-20261017/` were recorded by the team on 17 October 2026 with NODAL M1 cameras and show a team member at a bench, with their consent; they contain no third-party content. Product photos of the NODAL M1 are not included in this repository.

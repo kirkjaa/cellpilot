@@ -1,7 +1,7 @@
 // CellPilot page logic: pure functions, no DOM.
 // Imported by app.js in the browser and by logic.test.mjs under `node --test`.
 
-export const STAGES = ['steps', 'verifier', 'layout', 'robot', 'payback', 'notes'];
+export const STAGES = ['steps', 'verifier', 'layout', 'robot', 'payback', 'twin', 'notes'];
 
 export const VERDICT_LABEL = {
   automate: 'Automate',
@@ -555,7 +555,11 @@ export function summaryTiles(result, { factor, roi } = {}) {
   const f0 = Number(r.cycle_estimate?.speed_factor);
   const f = Number.isFinite(Number(factor)) && Number(factor) > 0 ? Number(factor) : (Number.isFinite(f0) ? f0 : 1.3);
   const cy = robotCycle(r, f);
-  tiles.push(cy ? {
+  const tw = r.twin && Number.isFinite(Number(r.twin.parallel_cycle_s)) ? r.twin : null;
+  tiles.push(tw && cy ? {
+    key: 'cycle', kind: null, value: `${Number(tw.parallel_cycle_s).toFixed(1)} s`,
+    label: 'cycle with a cobot, simulated', detail: `${cy.human_cycle_s.toFixed(1)} s by hand today`,
+  } : cy ? {
     key: 'cycle', kind: null, value: `${cy.parallel_cycle_s.toFixed(1)} s`,
     label: 'cycle with a cobot, estimated', detail: `${cy.human_cycle_s.toFixed(1)} s by hand today`,
   } : { key: 'cycle', kind: null, value: '–', label: 'no measured cycle', detail: '' });

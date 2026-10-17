@@ -212,6 +212,14 @@ def create_app(store: Optional[Store] = None, samples: Optional[Samples] = None,
         return Response(json.dumps(body, indent=2, ensure_ascii=False), media_type="application/json",
                         headers={"Content-Disposition": f'attachment; filename="cellpilot-{sid}-{aid}.json"'})
 
+    @app.api_route("/api/sessions/{sid}/twin/{aid}.mp4", methods=["GET", "HEAD"])
+    def twin_clip(sid: str, aid: str) -> FileResponse:
+        """The cobot twin's rendered clip, when one was made for a stored sample (samples/<sid>/twin/<aid>.mp4)."""
+        d = samples.dir(sid)
+        if d is None or not ID_RE.match(aid) or not (d / "twin" / f"{aid}.mp4").is_file():
+            raise HTTPException(404, "No twin clip")
+        return FileResponse(d / "twin" / f"{aid}.mp4", media_type="video/mp4", headers={"Cache-Control": "public, max-age=3600"})
+
     @app.api_route("/media/{sid}/{file}", methods=["GET", "HEAD"])
     def media(sid: str, file: str) -> FileResponse:
         path = samples.clip_path(sid, file)
