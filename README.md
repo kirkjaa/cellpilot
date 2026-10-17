@@ -33,6 +33,21 @@ The bundled sample study, `samples/kitting-20261017`, is a real recording: a 35 
 
 Every estimate says so on screen: the layout is "estimated from video", the robot cycle is an "estimate", price bands are "indicative".
 
+## Where the outputs are
+
+Two studies ship with the app, both recorded on 17 October 2026 with three NODAL M1 cameras. Everything the page shows is in the repository as files:
+
+| | Featured study (35 s, three cycles) | Second study (20 s test take) |
+|---|---|---|
+| The study on the live link | [`/#/s/kitting-20261017`](https://cellpilot-462384168489.asia-southeast1.run.app/#/s/kitting-20261017) | [`/#/s/kitting-dev-20261017`](https://cellpilot-462384168489.asia-southeast1.run.app/#/s/kitting-dev-20261017) |
+| Printable study, as a PDF | [`docs/study-kitting-20261017.pdf`](docs/study-kitting-20261017.pdf) | [`docs/study-kitting-dev-20261017.pdf`](docs/study-kitting-dev-20261017.pdf) |
+| The stored result (steps, verdicts, evidence, verifier, layout, robot, cycle, twin, notes) | [`samples/kitting-20261017/analyses/`](samples/kitting-20261017/analyses/) | [`samples/kitting-dev-20261017/analyses/`](samples/kitting-dev-20261017/analyses/) |
+| Gemini's raw answers, word for word | [`samples/kitting-20261017/argon/`](samples/kitting-20261017/argon/) | [`samples/kitting-dev-20261017/argon/`](samples/kitting-dev-20261017/argon/) |
+| The cobot twin's clip (simulated, labelled) | [`samples/kitting-20261017/twin/`](samples/kitting-20261017/twin/) | [`samples/kitting-dev-20261017/twin/`](samples/kitting-dev-20261017/twin/) |
+| The clips, the time offsets, and which camera became which view | `cam0.mp4`, `cam1.mp4`, `cam2.mp4`, `session.json`, `sources.json` in each folder | same |
+
+The two pictures at the top of this page are crops of the featured study. `docs/img/` holds them.
+
 ## Run it locally
 
 ```powershell
