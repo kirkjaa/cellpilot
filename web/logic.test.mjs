@@ -7,7 +7,7 @@ import {
   bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres, STAGES,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress, TAKE_STAGES,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind, placeLabels,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -510,4 +510,24 @@ test('rigKind tells the emulator from the live rig by the camera addresses', () 
   assert.equal(rigKind([{ url: 'not a url' }]), 'live');
   assert.equal(rigKind([], { url: 'https://m1.example' }), 'console');
   assert.equal(rigKind([{ url: 'ws://127.0.0.1:5601' }], { url: '' }), 'emulator');
+});
+
+test('placeLabels nudges an overlapping label down a line and clamps labels into the sketch', () => {
+  const fs = 30;
+  const view = [0, -1000, 2000, 1400];
+  const a = { x: 500, y: 100, w: 400, anchor: 'middle', movable: true };
+  const b = { x: 600, y: 110, w: 400, anchor: 'middle', movable: true };
+  const far = { x: 1500, y: 100, w: 200, anchor: 'middle', movable: true };
+  placeLabels([a, b, far], view, fs);
+  assert.equal(a.y, 100);                      // first of the pair stays
+  near(b.y, 110 + fs * 1.2);                   // the second drops one line
+  assert.equal(far.y, 100);                    // no overlap, no move
+  const edge = { x: 1990, y: 200, w: 300, anchor: 'middle', movable: false };
+  placeLabels([edge], view, fs);
+  near(edge.x, 2000 - fs * 0.2 - 150);         // pulled in so the text ends inside the viewBox
+  const fixed = { x: 500, y: 300, w: 400, anchor: 'middle', movable: false };
+  const under = { x: 500, y: 290, w: 400, anchor: 'middle', movable: true };
+  placeLabels([under, fixed], view, fs);
+  assert.equal(fixed.y, 300);                  // fixed labels never move
+  assert.ok(under.y > 300);                    // the movable one goes below it
 });

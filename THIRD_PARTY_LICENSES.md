@@ -31,7 +31,7 @@ The page is plain HTML, CSS and JavaScript with no third-party libraries.
 
 ## Media
 
-The sample clips in `samples/dev-synthetic/` are synthetic, generated with ffmpeg by the team; they contain no third-party content. Product photos of the NODAL M1 are not included in this repository.
+The sample clips in `samples/kitting-20261017/` were recorded by the team on 17 October 2026 with NODAL M1 cameras and show a team member at a bench, with their consent; they contain no third-party content. Product photos of the NODAL M1 are not included in this repository.
 
 ## Planned, not yet included
 

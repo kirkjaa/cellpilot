@@ -297,7 +297,7 @@ def start(store: Store, samples: Samples, sid: str) -> str:
 
 def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Run one analysis now (three paid Argon calls).")
-    p.add_argument("session", help="sample session id, e.g. dev-synthetic")
+    p.add_argument("session", help="sample session id, e.g. kitting-20261017")
     p.add_argument("--save-sample", action="store_true",
                    help="also write the result to samples/<sid>/analyses/<aid>.json with live=false")
     args = p.parse_args(argv)

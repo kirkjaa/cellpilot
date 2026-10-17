@@ -6,7 +6,7 @@ import {
   bannerPieces, bannerText, engineerLine, signoffSummary, stageStates, formatTime, formatClock, formatMoney,
   cycleBreakdown, robotCycle, evidenceAt, contentRect, boxRect, layoutScene, formatMetres,
   offsetRows, formatMs, takeStages, takeCameraLines, batteryText, cameraBadge, suggestSessionId, takeProgress,
-  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind,
+  featuredSession, summaryTiles, verdictFilterCounts, stepMatchesFilter, cellLanes, notesByStep, rigKind, placeLabels,
 } from './logic.js';
 import { SCENARIOS, RECORDING_RULES, scenarioById } from './scenarios.js';
 
@@ -162,16 +162,27 @@ function drawLayout(layout, robot) {
   if (sc.reach) root.append(svg('circle', { class: 'reach', cx: sc.reach.cx, cy: sc.reach.cy, r: sc.reach.r }));
   if (sc.needed) root.append(svg('circle', { class: 'needed', cx: sc.needed.cx, cy: sc.needed.cy, r: sc.needed.r }));
   root.append(svg('rect', { class: 'bench', x: sc.bench.x, y: sc.bench.y, width: sc.bench.w, height: sc.bench.h, rx: 12 }));
-  root.append(svg('text', { class: 'lbl bench-lbl', x: sc.bench.x + 20, y: sc.bench.y - 14, 'font-size': fs },
-    `bench ${formatMetres(layout.bench?.length_m, layout.bench?.width_m)}`));
-  for (const o of sc.objects) {
+  // Labels are placed together so that two objects side by side do not write over each other
+  // (placeLabels): a label inside its object stays put; one under its object may drop a line.
+  const benchText = `bench ${formatMetres(layout.bench?.length_m, layout.bench?.width_m)}`;
+  const width = (text) => text.length * fs * 0.6;
+  const benchLbl = { x: sc.bench.x + 20, y: sc.bench.y - 14, w: width(benchText), anchor: 'start', movable: false };
+  const objLbls = sc.objects.map((o) => {
     const kind = KIND_LABEL[o.kind] ?? '';
     const text = o.name + (kind && kind !== o.name ? ` · ${kind}` : '');
-    const inside = o.w >= text.length * fs * 0.6 && o.h >= fs * 1.6; // else the label sits under the object
-    root.append(svg('g', { class: `obj k-${o.kind}` },
-      svg('rect', { x: o.x, y: o.y, width: o.w, height: o.h, rx: 8 }),
-      svg('text', { class: 'lbl', x: o.x + o.w / 2, y: inside ? o.y + o.h / 2 + fs * 0.35 : o.y + o.h + fs * 1.05,
-        'text-anchor': 'middle', 'font-size': fs }, text)));
+    const inside = o.w >= width(text) && o.h >= fs * 1.6; // else the label sits under the object
+    return { text, x: o.x + o.w / 2, y: inside ? o.y + o.h / 2 + fs * 0.35 : o.y + o.h + fs * 1.05,
+      w: width(text), anchor: 'middle', movable: !inside };
+  });
+  const baseText = `${robot?.model || 'robot'} base`;
+  const baseLbl = sc.base ? { x: sc.base.cx, y: sc.base.cy - 80, w: width(baseText), anchor: 'middle', movable: false } : null;
+  placeLabels([benchLbl, ...objLbls, ...(baseLbl ? [baseLbl] : [])], sc.viewBox, fs);
+  root.append(svg('text', { class: 'lbl bench-lbl', x: benchLbl.x, y: benchLbl.y, 'font-size': fs }, benchText));
+  for (const o of sc.objects) {
+    root.append(svg('g', { class: `obj k-${o.kind}` }, svg('rect', { x: o.x, y: o.y, width: o.w, height: o.h, rx: 8 })));
+  }
+  for (const l of objLbls) { // after every box, so no box covers a neighbour's label
+    root.append(svg('text', { class: 'lbl', x: l.x, y: l.y, 'text-anchor': 'middle', 'font-size': fs }, l.text));
   }
   for (const a of sc.arrows) {
     root.append(svg('line', { class: `arrow v-${a.verdict}`, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, 'marker-end': 'url(#arrowhead)' }));
@@ -189,8 +200,7 @@ function drawLayout(layout, robot) {
   if (sc.base) {
     root.append(svg('g', { class: 'base' },
       svg('rect', { x: sc.base.cx - 60, y: sc.base.cy - 60, width: 120, height: 120, rx: 14 }),
-      svg('text', { class: 'lbl', x: sc.base.cx, y: sc.base.cy - 80, 'text-anchor': 'middle', 'font-size': fs },
-        `${robot?.model || 'robot'} base`)));
+      svg('text', { class: 'lbl', x: baseLbl.x, y: baseLbl.y, 'text-anchor': 'middle', 'font-size': fs }, baseText)));
   }
   return root;
 }

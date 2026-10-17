@@ -636,3 +636,34 @@ export function rigKind(cameras, console = null) {
   const loopback = (hst) => hst === 'localhost' || hst === '127.0.0.1' || hst === '::1' || hst === '[::1]';
   return list.every((u) => loopback(host(u))) ? 'emulator' : 'live';
 }
+
+/**
+ * Keep the layout sketch's labels legible. Each label is {x, y, w, anchor, movable}: x, y its SVG
+ * position in scene mm (y the baseline), w its estimated width, anchor 'middle' or 'start'. Every
+ * label is clamped into the viewBox; a movable one is nudged down a line at a time when it would
+ * overlap a label placed before it (fixed labels first, then top to bottom). Mutates and returns labels.
+ */
+export function placeLabels(labels, viewBox, fs) {
+  const [vx, vy, vw, vh] = viewBox;
+  const pad = fs * 0.2;
+  const box = (l) => {
+    const x1 = l.anchor === 'start' ? l.x : l.x - l.w / 2;
+    return { x1, x2: x1 + l.w, y1: l.y - fs * 0.85, y2: l.y + fs * 0.3 };
+  };
+  const hits = (a, b) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+  const clampX = (l) => {
+    const half = l.anchor === 'start' ? 0 : l.w / 2;
+    l.x = Math.min(Math.max(l.x, vx + pad + half), vx + vw - pad - (l.anchor === 'start' ? l.w : half));
+  };
+  const placed = [];
+  const order = [...labels.filter((l) => !l.movable), ...labels.filter((l) => l.movable).sort((a, b) => a.y - b.y || a.x - b.x)];
+  for (const l of order) {
+    clampX(l);
+    if (l.movable) {
+      for (let n = 0; n < 6 && placed.some((p) => hits(box(l), p)); n++) l.y += fs * 1.2;
+      l.y = Math.min(l.y, vy + vh - fs * 0.3);
+    }
+    placed.push(box(l));
+  }
+  return labels;
+}
