@@ -1,0 +1,51 @@
+{
+  "clip": "take_001",
+  "offload_dir": "D:\\cellpilot-verify\\capture\\rec-live",
+  "check": {
+    "ref": "rx-cam2",
+    "order": [
+      "rx-cam2",
+      "rx-cam1",
+      "rx-cam3"
+    ],
+    "fps": 30.0,
+    "delays_ms": {
+      "rx-cam1": 29.917,
+      "rx-cam2": 9.324,
+      "rx-cam3": 33.192
+    },
+    "offsets_s": {
+      "rx-cam1": 0.020593,
+      "rx-cam2": 0.0,
+      "rx-cam3": 0.023868
+    },
+    "views": {
+      "rx-cam2": "cam0",
+      "rx-cam1": "cam1",
+      "rx-cam3": "cam2"
+    },
+    "spread_ms": 23.868,
+    "frame_ms": 33.333,
+    "within_a_frame": true,
+    "missing": []
+  },
+  "cameras": {
+    "cam0": {
+      "node_id": "rx-cam2",
+      "sidecar": "D:\\cellpilot-verify\\capture\\rec-live\\kitting\\take_001_rx-cam2.jsonl",
+      "delay_ns": 9323678
+    },
+    "cam1": {
+      "node_id": "rx-cam1",
+      "sidecar": "D:\\cellpilot-verify\\capture\\rec-live\\kitting\\take_001_rx-cam1.jsonl",
+      "delay_ns": 29916605
+    },
+    "cam2": {
+      "node_id": "rx-cam3",
+      "sidecar": "D:\\cellpilot-verify\\capture\\rec-live\\kitting\\take_001_rx-cam3.jsonl",
+      "delay_ns": 33192153
+    }
+  },
+  "repository_clips": "cam0-2.mp4 here are re-encoded from the converter's 720p output (libx264 crf 23, 4 Mbit/s cap, same frames, fps and one-second keyframes) so the repository stays small. The stored analysis ran on the converter's crf-20 encodes, kept outside the repository.",
+  "note": "The first take of the day, 20 s, two cycles, recorded before the 35 s take that is the featured study."
+}

@@ -1,0 +1,38 @@
+{
+  "id": "kitting-dev-20261017",
+  "name": "Kitting station, 20 s test take",
+  "kind": "sample",
+  "recorded": "2026-10-17",
+  "synthetic": false,
+  "scenario": "kitting",
+  "brief": "A kitting station. The operator takes parts from three bins (A, B, C) and places one of each into the slots of a tray, orienting the third part, compares the kit with a reference card, applies a label, and puts the finished kit into a bag on the out pile.",
+  "clips": [
+    {
+      "view": "cam0",
+      "file": "cam0.mp4",
+      "fps": 30.0,
+      "width": 1280,
+      "height": 720,
+      "duration_s": 20.133,
+      "offset_s": 0.0
+    },
+    {
+      "view": "cam1",
+      "file": "cam1.mp4",
+      "fps": 30.0,
+      "width": 1280,
+      "height": 720,
+      "duration_s": 20.067,
+      "offset_s": 0.0206
+    },
+    {
+      "view": "cam2",
+      "file": "cam2.mp4",
+      "fps": 30.0,
+      "width": 1280,
+      "height": 720,
+      "duration_s": 20.067,
+      "offset_s": 0.0239
+    }
+  ]
+}
