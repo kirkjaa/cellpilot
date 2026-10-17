@@ -5,6 +5,12 @@ Which steps of a manual job could a cobot take over? Film a workstation with thr
 Built by team NODAL for the AI Builder Cup 2026, Manufacturing track. All code here was written during the hackathon.
 **Live:** https://cellpilot-462384168489.asia-southeast1.run.app (Cloud Run, Singapore). Open the sample study; no sign-in needed. "Run it live with Gemini" re-analyses it; live runs are capped at 10 a day for all visitors, and the button shows how many are left.
 
+![The sample study: the verdict banner, the four headline numbers and the three synchronized views](docs/img/study-banner.png)
+
+*The sample study on real footage: a kitting-station take recorded on 17 October 2026 with three NODAL M1 cameras, analysed by Gemini 4 Argon in one live run. Below the views: the timeline, each step with its evidence, the verifier's check and the engineer's sign-off, the layout estimated from the video, and the robot check.*
+
+![The steps with evidence and sign-off, the layout estimated from video and the robot check](docs/img/study-steps.png)
+
 ## How it works
 
 1. **Input:** three MP4 clips (`cam0`, `cam1`, `cam2`) and a `session.json` with each camera's time offset. Our reference rig is [NODAL M1](https://www.nodal3d.com/) (three global-shutter cameras started by one RF trigger, so the offsets come straight from the sync sidecars); any calibrated, time-aligned cameras work. The page's **Capture guide** (`#/guide`) shows where the cameras go, how the clips are aligned, what good footage looks like and how a session folder is made.
