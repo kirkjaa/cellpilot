@@ -40,7 +40,11 @@ PART_H = 0.02         # m, the part's thickness at a pick or place point
 FIXTURE_H = 0.03      # m, a locating nest raises the part by this much
 FIXTURE_SIZE = 0.16   # m, square
 TOOL_LENGTH = 0.16    # m, a two-finger gripper (2F-85 class) from the flange to the fingertips
-LIFT = 0.12           # m, clearance above a point before moving sideways
+RISER_H = 0.10        # m, the arm stands on a riser on the bench, as a bench-mounted cobot does
+MIN_BASE_DIST = 0.30  # m, a point closer than this to the base cannot be reached with the tool vertical
+SNAP_TO_NEST = 0.20   # m, an automatable pick this close to a nest is taken from the nest
+LIFT = 0.15           # m, clearance above a point before moving sideways
+PATH_STEP = 0.05      # m, spacing of the IK samples along a straight tool path
 TCP_SPEED = 0.25      # m/s, a collaborative speed (ISO/TS 15066 guidance)
 JOINT_SPEED = math.radians(60)   # rad/s, conservative joint speed cap
 GRIPPER_S = 0.5       # s, close or open
@@ -122,8 +126,9 @@ def base_candidates(layout, points: list[dict], reach_mm: float) -> list[dict]:
     for x, y, how in cands:
         far = max((math.hypot(p["x_m"] - x, p["y_m"] - y) for p in points), default=0.0)
         far = math.hypot(far, LIFT + PART_H)  # the lift point is the farthest
+        near = min((math.hypot(p["x_m"] - x, p["y_m"] - y) for p in points), default=1.0)
         clear = min((max(abs(o.x_m - x) - o.length_m / 2, abs(o.y_m - y) - o.width_m / 2, 0.0) for o in layout.objects), default=1.0)
-        fits = far <= reach
+        fits = far <= reach and near >= MIN_BASE_DIST
         out.append({"x_m": round(x, 3), "y_m": round(y, 3), "how": how, "farthest_point_mm": round(far * 1000), "fits": fits,
                     "clearance_m": round(clear, 3), "_key": (not fits, -min(clear, 0.25), far)})
     out.sort(key=lambda c: c["_key"])
@@ -149,6 +154,8 @@ def build_scene(layout, model_used: str, base: dict, fixtures: list[dict], point
     colours = {"bin": [0.35, 0.55, 0.85, 1], "fixture": [0.85, 0.55, 0.2, 1], "tool": [0.5, 0.5, 0.5, 1],
                "part_source": [0.4, 0.7, 0.4, 1], "part_destination": [0.3, 0.6, 0.6, 1], "other": [0.6, 0.6, 0.6, 1]}
     for i, o in enumerate(layout.objects):
+        if any(abs(f["x_m"] - o.x_m) < f["length_m"] / 2 and abs(f["y_m"] - o.y_m) < f["width_m"] / 2 for f in fixtures):
+            continue  # the nest stands where this zone was
         world.add_geom(name=f"obj{i}", type=mujoco.mjtGeom.mjGEOM_BOX,
                        size=[max(0.01, o.length_m / 2), max(0.01, o.width_m / 2), OBJECT_H / 2],
                        pos=[o.x_m, o.y_m, OBJECT_H / 2], rgba=colours.get(o.kind, colours["other"]))
@@ -177,7 +184,9 @@ def build_scene(layout, model_used: str, base: dict, fixtures: list[dict], point
                    pos=[0, 0.1 + TOOL_LENGTH + PART_H / 2, 0], quat=[-1, 1, 0, 0], rgba=[0.2, 0.2, 0.25, 0],
                    contype=0, conaffinity=0)
     wrist.add_site(name="tcp", pos=[0, 0.1 + TOOL_LENGTH, 0], quat=[-1, 1, 0, 0], size=[0.005, 0.005, 0.005])
-    frame = world.add_frame(pos=[base["x_m"], base["y_m"], 0.0])
+    world.add_geom(name="riser", type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.09, 0.09, RISER_H / 2],
+                   pos=[base["x_m"], base["y_m"], RISER_H / 2], rgba=[0.25, 0.25, 0.27, 1])
+    frame = world.add_frame(pos=[base["x_m"], base["y_m"], RISER_H])
     spec.attach(arm, prefix="arm/", frame=frame)
     model = spec.compile()
     return model
@@ -199,7 +208,7 @@ class Solver:
         self.cfg = mink.Configuration(model)
         self.cfg.update(self._home())
         self.task = mink.FrameTask(frame_name="arm/tcp", frame_type="site", position_cost=1.0, orientation_cost=0.3, lm_damping=1.0)
-        self.posture = mink.PostureTask(model, cost=1e-2)
+        self.posture = mink.PostureTask(model, cost=1e-3)
         self.posture.set_target(self._home())
         self.limits = [mink.ConfigurationLimit(model)]
         self.tcp_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "arm/tcp")
@@ -223,15 +232,25 @@ class Solver:
         self.mujoco.mj_forward(self.model, self.data)
         return self.data.site_xpos[self.tcp_id].copy()
 
-    def solve(self, target: np.ndarray, start: Optional[np.ndarray] = None) -> tuple[np.ndarray, float, float]:
-        """IK to the target with the tool pointing down; returns (q, position error m, orientation error rad)."""
+    def seeds(self, target: np.ndarray) -> list[np.ndarray]:
+        """Elbow-up home poses with the shoulder turned in four directions around the target's bearing."""
+        self.data.qpos[:] = self._home()
+        self.mujoco.mj_forward(self.model, self.data)
+        base = self.data.xpos[self.base_body] if self.base_body >= 0 else np.zeros(3)
+        bearing = math.atan2(target[1] - base[1], target[0] - base[0])
+        out = []
+        for k in range(4):
+            q = self._home()
+            q[0] = bearing + k * math.pi / 2
+            out.append(q)
+        return out
+
+    def _iterate(self, target: np.ndarray, n: int) -> tuple[np.ndarray, float, float]:
         mink = self.mink
-        if start is not None:
-            self.cfg.update(start)
         self.task.set_target(mink.SE3.from_rotation_and_translation(_tool_down(), np.asarray(target, dtype=float)))
         dt = 0.02
         pos_err = ori_err = float("inf")
-        for _ in range(400):
+        for _ in range(n):
             v = mink.solve_ik(self.cfg, [self.task, self.posture], dt, "daqp", damping=1e-3, limits=self.limits)
             self.cfg.integrate_inplace(v, dt)
             err = self.task.compute_error(self.cfg)
@@ -239,6 +258,26 @@ class Solver:
             if pos_err < 1e-3 and ori_err < 2e-2:
                 break
         return self.cfg.q.copy(), pos_err, ori_err
+
+    def solve(self, target: np.ndarray, start: Optional[np.ndarray] = None) -> tuple[np.ndarray, float, float]:
+        """IK to the target with the tool pointing down; returns (q, position error m, orientation error rad).
+        Warm-started from `start` when given (path samples); otherwise four shoulder directions are tried
+        briefly and the best collision-free one is refined."""
+        if start is not None:
+            self.cfg.update(start)
+            self.posture.set_target(start)
+            return self._iterate(target, 150)
+        tries = []
+        for seed in self.seeds(target):
+            self.cfg.update(seed)
+            self.posture.set_target(seed)
+            q, perr, oerr = self._iterate(target, 60)
+            tries.append((perr > 5e-3 or oerr > 5e-2, len(self.collisions(q)), perr, q, seed))
+        tries.sort(key=lambda t: t[:3])
+        _, _, _, q, seed = tries[0]
+        self.cfg.update(q)
+        self.posture.set_target(seed)
+        return self._iterate(target, 150)
 
     def collisions(self, q: np.ndarray) -> list[str]:
         """Names of bench/object/fixture geoms the arm penetrates in this configuration (the base on the bench excepted)."""
@@ -257,8 +296,8 @@ class Solver:
             if arm1 == arm2:
                 continue  # arm with itself, or scenery with scenery
             other = n2 if arm1 else n1
-            if other == "bench" and self.base_body in (b1, b2):
-                continue  # the base stands on the bench
+            if other in ("bench", "riser") and self.base_body in (b1, b2):
+                continue  # the base stands on the riser, on the bench
             if other not in hits:
                 hits.append(other)
         return hits
@@ -285,6 +324,17 @@ def _cycle_points(result, points: list[dict]) -> tuple[list[str], dict[str, dict
     return order, by_step, notes
 
 
+def _path(sol: Solver, q_from: np.ndarray, tcp_from: np.ndarray, tcp_to: np.ndarray) -> list[np.ndarray]:
+    """Configurations along a straight tool line from tcp_from to tcp_to, each solved from the one before."""
+    n = max(1, int(math.ceil(float(np.linalg.norm(tcp_to - tcp_from)) / PATH_STEP)))
+    qs, q = [], q_from
+    for i in range(1, n + 1):
+        target = tcp_from + (tcp_to - tcp_from) * (i / n)
+        q, _, _ = sol.solve(target, start=q)
+        qs.append(q)
+    return qs
+
+
 def _run_cycle(sol: Solver, result, order: list[str], by_step: dict[str, dict], fixtures: list[dict]) -> dict:
     """IK through every step's pick, lift and place; returns the waypoints of one repeating cycle and the checks."""
     def z_base(p):
@@ -303,26 +353,33 @@ def _run_cycle(sol: Solver, result, order: list[str], by_step: dict[str, dict], 
                 z = z_base(p) + PART_H
                 seq += [(f"above {kind}", p, z + LIFT, 0.0, None), (kind, p, z, GRIPPER_S, hold), (f"above {kind}", p, z + LIFT, 0.0, None)]
         for label, p, z, dwell, hold in seq:
-            q, perr, oerr = sol.solve(np.array([p["x_m"], p["y_m"], z]), start=q_prev)
+            q, perr, oerr = sol.solve(np.array([p["x_m"], p["y_m"], z]))
             hits = sol.collisions(q)
             reachable = perr < 0.005 and oerr < 0.05
             if label in ("pick", "place"):
+                note = "; ".join(x for x in [f"part taken from step {p['borrowed_from']}'s point" if p.get("borrowed_from") else "",
+                                             p.get("note", "")] if x)
                 point_rows.append({"step_id": sid, "name": step_name, "kind": label, "x_m": p["x_m"], "y_m": p["y_m"], "z_m": round(z, 3),
-                                   "reachable": bool(reachable), "position_error_mm": round(perr * 1000, 1), "collisions": hits,
-                                   "note": f"part taken from step {p['borrowed_from']}'s point" if p.get("borrowed_from") else ""})
+                                   "reachable": bool(reachable), "position_error_mm": round(perr * 1000, 1), "collisions": hits, "note": note})
             waypoints.append({"q": q, "tcp": sol.tcp(q), "label": f"{step_name}: {label}", "dwell": dwell, "hold": hold})
             q_prev = q
-    # The repeating cycle closes from the last waypoint back to the first; the path between waypoints is checked too.
+    # The repeating cycle closes from the last waypoint back to the first. Between waypoints the tool moves in a
+    # straight line, solved sample by sample; those configurations are what gets checked and what the clip shows.
     segments, path_hits, total = [], [], 0.0
     loop = waypoints + [dict(waypoints[0], label="back to the first point", dwell=0.0, hold=None)] if waypoints else []
     for a, b in zip(loop, loop[1:]):
-        dq = float(np.max(np.abs(b["q"] - a["q"])))
-        dx = float(np.linalg.norm(b["tcp"] - a["tcp"]))
-        t = max(dq / JOINT_SPEED, dx / TCP_SPEED)
-        for s in np.linspace(0.0, 1.0, 10)[1:-1]:
-            for hit in sol.collisions(a["q"] + (b["q"] - a["q"]) * s):
+        qs = _path(sol, a["q"], a["tcp"], b["tcp"])
+        b["path"] = qs
+        t, prev_q, prev_tcp = 0.0, a["q"], a["tcp"]
+        for q in qs:
+            tcp = sol.tcp(q)
+            t += max(float(np.max(np.abs(q - prev_q))) / JOINT_SPEED, float(np.linalg.norm(tcp - prev_tcp)) / TCP_SPEED)
+            for hit in sol.collisions(q):
                 if hit not in path_hits:
                     path_hits.append(hit)
+            prev_q, prev_tcp = q, tcp
+        dq = float(np.max(np.abs(b["q"] - a["q"])))
+        dx = float(np.linalg.norm(b["tcp"] - a["tcp"]))
         segments.append({"to": b["label"], "joint_rad": round(dq, 3), "tool_m": round(dx, 3), "seconds": round(t, 2)})
         total += t + b["dwell"]
     return {"waypoints": waypoints, "points": point_rows, "segments": segments, "path_collisions": path_hits,
@@ -341,6 +398,13 @@ def simulate(result, *, render_to: Optional[Path] = None) -> dict:
         raise TwinError("no automatable step has a pick or place point in the layout")
     fixtures = _fixtures(result)
     order, by_step, point_notes = _cycle_points(result, points)
+    for pts in by_step.values():
+        pk = pts.get("pick")
+        if pk:
+            near = min(fixtures, key=lambda f: math.hypot(f["x_m"] - pk["x_m"], f["y_m"] - pk["y_m"]), default=None)
+            if near and math.hypot(near["x_m"] - pk["x_m"], near["y_m"] - pk["y_m"]) <= SNAP_TO_NEST:
+                pk["x_m"], pk["y_m"] = near["x_m"], near["y_m"]
+                pk["note"] = f"picked from the {near['name']}"
     all_pts = [p for pts in by_step.values() for p in pts.values()]
     arm_requested = result.robot.model
     model_used, note = pick_model(arm_requested)
@@ -348,7 +412,7 @@ def simulate(result, *, render_to: Optional[Path] = None) -> dict:
 
     # Try the best few bases in full; the first collision-free one wins, else the one with the fewest collisions.
     tried = []
-    for cand in base_candidates(lay, all_pts, reach_mm)[:4]:
+    for cand in base_candidates(lay, all_pts, reach_mm)[:6]:
         model = build_scene(lay, model_used, cand, fixtures, all_pts)
         sol = Solver(model)
         run = _run_cycle(sol, result, order, by_step, fixtures)
@@ -464,12 +528,12 @@ def render(model, sol: Solver, waypoints: list[dict], out: Path, *, title: str =
         for _ in range(fps):  # a second at home
             frame(waypoints[0]["q"])
         for a, b in zip(waypoints, waypoints[1:]):
-            dq = float(np.max(np.abs(b["q"] - a["q"]))); dx = float(np.linalg.norm(b["tcp"] - a["tcp"]))
-            n = max(2, int(round(max(dq / JOINT_SPEED, dx / TCP_SPEED) * fps)))
-            for i in range(1, n + 1):
-                s = i / n
-                s = 0.5 - 0.5 * math.cos(math.pi * s)  # ease in and out
-                frame(a["q"] + (b["q"] - a["q"]) * s)
+            knots = [a["q"], *(b.get("path") or []), b["q"]] if b.get("path") else [a["q"], b["q"]]
+            for ka, kb in zip(knots, knots[1:]):
+                dq = float(np.max(np.abs(kb - ka))); dx = float(np.linalg.norm(sol.tcp(kb) - sol.tcp(ka)))
+                n = max(1, int(round(max(dq / JOINT_SPEED, dx / TCP_SPEED) * fps)))
+                for i in range(1, n + 1):
+                    frame(ka + (kb - ka) * (i / n))
             if b.get("hold") == "grip":
                 held = True
                 model.geom_rgba[carried][3] = 1.0

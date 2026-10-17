@@ -515,28 +515,25 @@
       "arm_model": "UR5e",
       "model_note": "",
       "base": {
-        "x_m": 0.8,
+        "x_m": 0.857,
         "y_m": 0.77,
-        "farthest_point_mm": 530,
+        "farthest_point_mm": 549,
         "fits": true,
-        "clearance_m": 0.325,
-        "rule": "placed at the back edge of the bench: the farthest automatable point is 530 mm away, within 85 % of the 850 mm reach; 4 base positions tried for a collision-free cycle"
+        "clearance_m": 0.382,
+        "rule": "placed at the back edge of the bench: the farthest automatable point is 549 mm away, within 85 % of the 850 mm reach; 1 base position tried for a collision-free cycle"
       },
       "points": [
         {
           "step_id": "s2",
           "name": "Slide power bank to target mark",
           "kind": "pick",
-          "x_m": 1.0,
-          "y_m": 0.3,
-          "z_m": 0.02,
+          "x_m": 0.9,
+          "y_m": 0.25,
+          "z_m": 0.05,
           "reachable": true,
-          "position_error_mm": 1.0,
-          "collisions": [
-            "bench",
-            "fixture0"
-          ],
-          "note": ""
+          "position_error_mm": 0.0,
+          "collisions": [],
+          "note": "picked from the locating nest for power bank"
         },
         {
           "step_id": "s2",
@@ -546,10 +543,8 @@
           "y_m": 0.35,
           "z_m": 0.02,
           "reachable": true,
-          "position_error_mm": 0.8,
-          "collisions": [
-            "bench"
-          ],
+          "position_error_mm": 0.0,
+          "collisions": [],
           "note": ""
         }
       ],
@@ -557,60 +552,56 @@
         "s2"
       ],
       "all_reachable": true,
-      "collision_free": false,
-      "path_collisions": [
-        "bench",
-        "obj0",
-        "fixture0"
-      ],
-      "robot_cycle_s": 6.53,
+      "collision_free": true,
+      "path_collisions": [],
+      "robot_cycle_s": 6.32,
       "operator_cycle_s": 4.15,
       "unassigned_s": 0.0,
-      "parallel_cycle_s": 6.53,
+      "parallel_cycle_s": 6.32,
       "estimate_parallel_cycle_s": 4.15,
       "segments": [
         {
           "to": "Slide power bank to target mark: pick",
-          "joint_rad": 0.244,
-          "tool_m": 0.12,
-          "seconds": 0.48
+          "joint_rad": 0.408,
+          "tool_m": 0.15,
+          "seconds": 0.6
         },
         {
           "to": "Slide power bank to target mark: above pick",
-          "joint_rad": 0.245,
-          "tool_m": 0.12,
-          "seconds": 0.48
+          "joint_rad": 0.408,
+          "tool_m": 0.15,
+          "seconds": 0.6
         },
         {
           "to": "Slide power bank to target mark: above place",
-          "joint_rad": 0.925,
-          "tool_m": 0.452,
-          "seconds": 1.81
+          "joint_rad": 5.569,
+          "tool_m": 0.365,
+          "seconds": 1.46
         },
         {
           "to": "Slide power bank to target mark: place",
-          "joint_rad": 0.25,
-          "tool_m": 0.12,
-          "seconds": 0.48
+          "joint_rad": 0.405,
+          "tool_m": 0.15,
+          "seconds": 0.6
         },
         {
           "to": "Slide power bank to target mark: above place",
-          "joint_rad": 0.25,
-          "tool_m": 0.12,
-          "seconds": 0.48
+          "joint_rad": 0.405,
+          "tool_m": 0.15,
+          "seconds": 0.6
         },
         {
           "to": "back to the first point",
-          "joint_rad": 0.926,
-          "tool_m": 0.452,
-          "seconds": 1.81
+          "joint_rad": 5.569,
+          "tool_m": 0.365,
+          "seconds": 1.46
         }
       ],
       "assumptions": {
         "tcp_speed_mps": 0.25,
         "joint_speed_dps": 60,
         "gripper_s": 0.5,
-        "lift_m": 0.12,
+        "lift_m": 0.15,
         "tool_length_m": 0.16,
         "reach_margin": 0.85
       },

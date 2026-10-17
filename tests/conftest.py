@@ -156,6 +156,16 @@ def stub_argon(monkeypatch):
     monkeypatch.setattr(argon, "task_graph", fake_a)
     monkeypatch.setattr(argon, "verify", fake_d)
     monkeypatch.setattr(argon, "layout", fake_c)
+    from app import twin as twin_mod
+
+    def fake_twin(result):
+        return {"simulator": "stub", "arm_requested": result.robot.model, "arm_model": "UR5e", "model_note": "",
+                "base": {"x_m": 0.5, "y_m": 0.7, "rule": "stub", "farthest_point_mm": 400, "fits": True}, "points": [],
+                "steps_simulated": [], "all_reachable": True, "collision_free": True, "path_collisions": [],
+                "robot_cycle_s": 2.0, "operator_cycle_s": 1.0, "unassigned_s": 0.5, "parallel_cycle_s": 2.0,
+                "estimate_parallel_cycle_s": 2.0, "segments": [], "assumptions": {}, "fixtures": [], "parts": [],
+                "parts_total": {"low": 0, "high": 0, "currency": "USD", "note": ""}, "clip": None, "method": "stub"}
+    monkeypatch.setattr(twin_mod, "simulate", fake_twin)
     monkeypatch.setattr(argon, "notes", fake_e)
     return calls
 
